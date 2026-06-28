@@ -1,0 +1,19 @@
+# Demo places for the OSMnx-only pipeline, each tagged with a terrain stratum so
+# the split (§3.4) can MEASURE generalisation. Use small neighbourhoods for fast
+# local runs; whole-city names produce thousands of tiles.
+#
+# Each entry is either:
+#   - {place: "<OSM-geocodable name>", terrain: <stratum>}   (graph_from_place)
+#   - {point: [lat, lon], dist_m: <radius>, terrain: <stratum>, name: <slug>}  (graph_from_point)
+#
+# Bengaluru is named in the brief (§15) — keep it as the headline demo city.
+
+places:
+  # Dense urban core (small neighbourhood -> fast first run)
+  - {point: [12.9719, 77.6412], dist_m: 1500, terrain: urban,    name: indiranagar_blr}
+  # Suburban / mixed
+  - {point: [12.9081, 77.6476], dist_m: 1500, terrain: suburban, name: hsr_layout_blr}
+  # Forested / sparse (edge of city greenbelt) — stresses occlusion
+  - {point: [13.0100, 77.5700], dist_m: 1500, terrain: forested, name: hesaraghatta_blr}
+  # Rural grid
+  - {point: [12.8000, 77.4000], dist_m: 1500, terrain: rural,    name: bidadi_rural}

@@ -1,0 +1,15 @@
+# Base config — global defaults shared by all experiments.
+# Override per-experiment by merging another YAML or passing CLI dotlist args.
+
+project: route-resilience
+seed: 42
+device: auto            # auto -> cuda if available else cpu (we have no local GPU)
+
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+  artifacts: artifacts
+
+# Terrain strata — generalisation is MEASURED across these, not claimed (§2.2, §11).
+terrains: [urban, suburban, forested, rural]

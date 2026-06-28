@@ -1,0 +1,34 @@
+# Data pipeline config — maps directly to roadmap §3.4 preprocessing pipeline.
+# Values here are defaults; M1/M2 will consume them. Documented now so the
+# contract is fixed before any code reads it.
+
+data:
+  # ---- Tiling (Rasterio) — §3.4 ----
+  tile_size: 512
+  overlap: 0.25           # 25% overlap between tiles
+  resolution_m: 0.5       # ground sample distance per pixel (Cartosat-like target)
+  min_road_frac: 0.004    # drop near-empty tiles (oversample road-dense, §3.3)
+  max_tiles_per_place: 500
+  bands: [1, 2, 3]        # RGB by default; multispectral handled per-sensor later
+  normalize: per_band     # per-band normalisation
+  clahe: true             # CLAHE contrast enhancement
+
+  # ---- OSM auto-masks (OSMnx) — §3.2 ----
+  osm:
+    network_type: drive    # drivable roads -> routable graph
+    road_buffer_m: 2.0     # rasterise vector centerlines with this half-width
+    simplify: true
+
+  # ---- Split — STRATIFIED BY TERRAIN (§3.4) ----
+  split:
+    train: 0.7
+    val: 0.15
+    test: 0.15
+    stratify_by: terrain
+
+  # ---- Synthetic occlusion (M2) — the occlusion-recall training signal (§3.3) ----
+  occlusion:
+    enabled: true
+    types: [tree_canopy, building_shadow, cloud, vehicle]
+    coverage_range: [0.05, 0.30]   # fraction of road pixels to occlude per tile
+    apply_prob: 0.5                 # chance a training tile gets synthetic occlusion
