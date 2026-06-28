@@ -1,0 +1,70 @@
+# Route Resilience — Conda environment (Windows-friendly via conda-forge).
+#
+# WHY conda: GDAL / Rasterio / Fiona / GeoPandas ship pre-built binaries on
+# conda-forge and "just work" on Windows. pip-installing them on Windows is a
+# known compiler nightmare. ML libs (torch, smp) are pip-installed AFTER the
+# geospatial base, so conda solves the hard part and pip handles the easy part.
+#
+# CREATE:   mamba env create -f environment.yml   (or: conda env create -f environment.yml)
+# ACTIVATE: conda activate route-resilience
+# DEV INSTALL: pip install -e .
+#
+# NOTE (no local GPU): torch here is the CPU build for local dev (data pipeline,
+# graph, twin, dashboard all run on CPU). Heavy training (M3/M4) is done on
+# Colab/Kaggle where a GPU torch is already provided. See docs/TRAINING.md.
+
+name: route-resilience
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+
+  # ---- Geospatial core (the reason we use conda) ----
+  - gdal>=3.6
+  - rasterio>=1.3
+  - geopandas>=0.14
+  - shapely>=2.0
+  - fiona
+  - pyproj
+  - osmnx>=1.9          # pulls networkx, automatically
+  - rtree              # spatial index (rtree) for fast graph ops
+
+  # ---- Scientific / imaging ----
+  - numpy
+  - pandas
+  - scipy
+  - scikit-image>=0.22  # skeletonize (Phase II)
+  - scikit-learn
+  - opencv
+  - matplotlib
+  - tqdm
+  - pyyaml
+  - rich                # pretty logging / progress
+
+  # ---- Graph / network analysis (Phase III twin) ----
+  - networkx>=3.0
+
+  # ---- Dev tooling ----
+  - pytest
+  - ruff
+  - black
+  - pre-commit
+  - jupyterlab
+
+  # ---- pip-only (ML stack + config) ----
+  - pip
+  - pip:
+      # Device-agnostic CPU torch for local dev. On Colab/Kaggle, the platform
+      # provides a CUDA torch; do NOT reinstall there.
+      - torch
+      - torchvision
+      - segmentation-models-pytorch>=0.3.3   # SegFormer (mit_b2) + U-Net
+      - timm                                  # encoder weights backbone
+      - albumentations>=1.4                   # augmentation + synthetic occlusion
+      - omegaconf>=2.3                         # config system
+      - streamlit>=1.33                        # dashboard
+      - folium                                 # Leaflet bindings for the map
+      - streamlit-folium                       # folium <-> streamlit bridge
+      # torch-geometric is the M7 GNN-healing STRETCH goal. Install separately
+      # only if we get there (it needs torch-matched wheels):
+      #   pip install torch-geometric

@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "route-resilience"
+version = "0.1.0"
+description = "Occlusion-robust road extraction + graph-theoretic resilience digital twin (BAH 2026)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Route Resilience Team" }]
+
+# Runtime deps are managed by environment.yml (conda) — this list documents the
+# pip-installable subset so `pip install -e .` works inside the conda env.
+dependencies = [
+    "numpy",
+    "pandas",
+    "omegaconf>=2.3",
+    "rich",
+    "pyyaml",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "black", "pre-commit"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]  # black handles line length
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
