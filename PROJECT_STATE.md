@@ -18,7 +18,7 @@ deliberately excluded — finale only.
 | M1  | Data pipeline (tiling + OSM split)| §3, P2  | ✅     | geo/osm/build/split + CLI. All 10 tests pass. Live OSMnx run produced 200 Indiranagar mask tiles + manifest. |
 | M2  | Synthetic occlusion generator     | §3.3 P2 | ✅     | occlusion.py (4 occluders, road-biased) + synth_image.py + preview. 8 tests pass; assets/occlusion_preview.png. |
 | M3  | Baseline segmentation model       | §10 P3  | ✅*    | U-Net(resnet34)+Dice/Focal, shared Dataset, device-agnostic trainer, IoU/Dice/P/R. 22 tests pass; CPU dry-run trains end-to-end + checkpoints. *Full train pending Colab GPU run. |
-| M4  | SegFormer-B2 + clDice             | §10 P4  | ⬜     | Topology loss + occlusion training (train on Colab/Kaggle) |
+| M4  | SegFormer-B2 + clDice             | §10 P4  | ✅*    | smp Segformer/mit_b2, soft-clDice topology loss + loss factory. clDice 5x more break-sensitive than Dice (proven). CPU dry-run trains. *Full train pending Colab GPU. |
 | M5  | Evaluation pipeline               | §11     | ⬜     | clDice, occlusion-recall, connectivity ratio, APLS |
 | M6  | Skeleton → graph                  | §7 P2   | ⬜     | scikit-image skeletonize → NetworkX weighted graph |
 | M7  | Graph healing                     | §7 P2   | ⬜     | MST/Disjoint-Set bridging (GNN link-pred = stretch) |
@@ -30,10 +30,12 @@ deliberately excluded — finale only.
 ---
 
 ## Currently building
-- **M0–M3 done and verified.** Full 4-terrain dataset built (730 tiles, 511/109/110).
-  Baseline trainer proven on CPU (dry-run). 22 tests pass, ruff clean.
-  Next up: **M4 — SegFormer-B2 + clDice** (then run full baseline + M4 training on Colab).
-- Pending GPU: actual baseline training run (`python scripts/train.py` on Colab/Kaggle).
+- **M0–M4 done and verified.** 28 tests pass, ruff clean. Both models (baseline
+  U-Net, SegFormer+clDice) train end-to-end on CPU dry-run. Next up: **M5 — Evaluation**
+  (clDice, occlusion-recall, connectivity ratio, APLS) — needed to quantify the contrast.
+- Pending GPU (batch later on Colab): full baseline run + full SegFormer+clDice run.
+  - baseline:  `python scripts/train.py`
+  - segformer: `python scripts/train.py --config base.yaml data.yaml model_segformer.yaml train.yaml train_segformer.yaml`
 
 ## Environment (installed 2026-06-29)
 - Miniforge at `C:\Users\HP\miniforge3`; env `route-resilience` (Python 3.11).

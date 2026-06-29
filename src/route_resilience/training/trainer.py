@@ -21,7 +21,7 @@ from ..data.build import read_manifest
 from ..data.dataset import RoadTileDataset
 from ..evaluation.metrics import SegMetrics
 from ..models.baseline import build_model
-from ..models.losses import DiceFocalLoss
+from ..models.losses import build_loss
 from ..paths import CHECKPOINTS, METRICS, PROCESSED, ensure_dirs
 from ..utils import get_logger
 
@@ -102,7 +102,8 @@ def train(cfg, *, dry_run: bool = False) -> dict:
     log.info("tiles: train=%d val=%d", len(tl.dataset), len(vl.dataset))
 
     model = build_model(cfg).to(device)
-    loss_fn = DiceFocalLoss(cfg.train.loss.dice_w, cfg.train.loss.focal_w)
+    loss_fn = build_loss(cfg)
+    log.info("loss=%s", cfg.train.loss.get("name", "dice_focal"))
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.train.lr,
                             weight_decay=cfg.train.weight_decay)
     scaler = torch.cuda.amp.GradScaler() if (device == "cuda" and cfg.train.amp) else None

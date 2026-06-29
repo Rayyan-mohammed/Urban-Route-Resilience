@@ -1,0 +1,10 @@
+# SegFormer-B2 — the USP model (M4, §10). MiT-B2 transformer encoder + SegFormer
+# all-MLP decoder via smp. Same trainer as the baseline; only this file changes.
+# Pair with the clDice loss (configs/train_segformer.yaml).
+
+model:
+  arch: Segformer
+  encoder: mit_b2
+  encoder_weights: imagenet   # set null for offline/dry-run (no download)
+  in_channels: 3
+  classes: 1

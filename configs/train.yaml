@@ -13,5 +13,9 @@ train:
   occlusion: true          # train WITH synthetic occlusion augmentation (§3.3)
   out_name: baseline_unet  # checkpoint / metrics file stem
   loss:
+    name: dice_focal       # dice_focal (baseline) | dice_cldice (M4)
     dice_w: 0.5
     focal_w: 0.5
+    cldice_alpha: 0.5      # weight on the clDice topology term (dice_cldice only)
+    cldice_iters: 10       # soft-skeleton iterations
+    cldice_smooth: 1.0

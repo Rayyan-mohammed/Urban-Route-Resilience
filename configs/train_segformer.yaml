@@ -1,0 +1,13 @@
+# Training overrides for the SegFormer + clDice run (M4). Merge AFTER train.yaml:
+#   python scripts/train.py --config base.yaml data.yaml model_segformer.yaml \
+#                                    train.yaml train_segformer.yaml
+# Transformers like a smaller LR than CNNs; clDice is the topology objective.
+
+train:
+  lr: 0.00006              # 6e-5, typical for MiT/SegFormer fine-tuning
+  batch_size: 6
+  out_name: segformer_cldice
+  loss:
+    name: dice_cldice
+    cldice_alpha: 0.5
+    cldice_iters: 10
