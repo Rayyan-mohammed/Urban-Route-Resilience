@@ -1,0 +1,17 @@
+# Training config (M3) — device-agnostic. AMP is used only on CUDA.
+# num_workers=0 on Windows avoids DataLoader multiprocessing/pickling issues with
+# rasterio handles; bump it on Colab/Kaggle for speed.
+
+train:
+  epochs: 40
+  batch_size: 8
+  lr: 0.0003
+  weight_decay: 0.0001
+  num_workers: 0
+  amp: true                # mixed precision (CUDA only; ignored on CPU)
+  threshold: 0.5           # logit->mask probability threshold for metrics
+  occlusion: true          # train WITH synthetic occlusion augmentation (§3.3)
+  out_name: baseline_unet  # checkpoint / metrics file stem
+  loss:
+    dice_w: 0.5
+    focal_w: 0.5

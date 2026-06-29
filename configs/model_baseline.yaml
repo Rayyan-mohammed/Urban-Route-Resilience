@@ -1,0 +1,10 @@
+# Baseline segmentation model (M3) — the experimental CONTROL (§10).
+# A conventional U-Net. `arch`/`encoder` are config keys so M4's SegFormer is a
+# one-line swap (e.g. arch=Unet encoder=mit_b2). Output: 1-channel logits.
+
+model:
+  arch: Unet              # any smp arch: Unet, Linknet, FPN, ...
+  encoder: resnet34       # smp encoder name
+  encoder_weights: imagenet   # set null for offline/dry-run (no download)
+  in_channels: 3
+  classes: 1

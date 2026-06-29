@@ -19,6 +19,7 @@ env/
 .python-version
 
 # ---- ML artifacts ----
+artifacts/
 *.pth
 *.pt
 *.ckpt
