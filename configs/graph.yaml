@@ -1,0 +1,8 @@
+# Graph stage config (M6/M7). Used by graph extraction + healing.
+
+graph:
+  simplify: true          # merge junction tangles + dissolve degree-2 nodes (M6)
+  merge_px: 2.5           # junction-cluster radius in pixels
+  healing:
+    max_gap_m: 40.0       # bridge gaps up to this width; wider = genuine separation
+    endpoints_only: true  # anchor bridges on dangling endpoints (real road breaks)
