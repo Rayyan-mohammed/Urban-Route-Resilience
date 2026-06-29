@@ -16,7 +16,7 @@ deliberately excluded — finale only.
 |-----|-----------------------------------|---------|--------|-------|
 | M0  | Project foundation                | §12 P1  | ✅     | Repo skeleton, env, config, paths, logging, state ledger |
 | M1  | Data pipeline (tiling + OSM split)| §3, P2  | ✅     | geo/osm/build/split + CLI. All 10 tests pass. Live OSMnx run produced 200 Indiranagar mask tiles + manifest. |
-| M2  | Synthetic occlusion generator     | §3.3 P2 | ⬜     | tree/shadow/cloud/vehicle paste — occlusion-recall signal |
+| M2  | Synthetic occlusion generator     | §3.3 P2 | ✅     | occlusion.py (4 occluders, road-biased) + synth_image.py + preview. 8 tests pass; assets/occlusion_preview.png. |
 | M3  | Baseline segmentation model       | §10 P3  | ⬜     | U-Net/D-LinkNet, Dice+Focal, IoU — the demo "contrast" |
 | M4  | SegFormer-B2 + clDice             | §10 P4  | ⬜     | Topology loss + occlusion training (train on Colab/Kaggle) |
 | M5  | Evaluation pipeline               | §11     | ⬜     | clDice, occlusion-recall, connectivity ratio, APLS |
@@ -30,8 +30,10 @@ deliberately excluded — finale only.
 ---
 
 ## Currently building
-- **M0 + M1 done and verified.** Conda env `route-resilience` installed; all 10
-  tests pass; 200 Indiranagar mask tiles generated. Next up: **M2 — Synthetic occlusion**.
+- **M0–M2 done and verified.** Conda env installed; 18 tests pass; 200 Indiranagar
+  mask tiles + occlusion preview asset. Next up: **M3 — Baseline segmentation model**.
+- Note: build the other 3 terrains (suburban/forested/rural) before M3 training so
+  per-terrain generalisation is measurable.
 
 ## Environment (installed 2026-06-29)
 - Miniforge at `C:\Users\HP\miniforge3`; env `route-resilience` (Python 3.11).

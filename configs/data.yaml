@@ -30,5 +30,7 @@ data:
   occlusion:
     enabled: true
     types: [tree_canopy, building_shadow, cloud, vehicle]
-    coverage_range: [0.05, 0.30]   # fraction of road pixels to occlude per tile
+    weights: [0.40, 0.30, 0.20, 0.10]  # sampling weight per occluder type
+    coverage_range: [0.05, 0.30]   # fraction of ROAD pixels to occlude per tile
     apply_prob: 0.5                 # chance a training tile gets synthetic occlusion
+    max_occluders: 50               # safety cap on occluders placed per tile
