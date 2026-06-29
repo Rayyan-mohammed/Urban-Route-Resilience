@@ -9,7 +9,7 @@ cannot route on it, rank intersections on it, or simulate a flood closure on it.
 **Route Resilience** turns occluded satellite imagery into a *connectivity-complete,
 routable graph* and a **hazard-grounded resilience digital twin** that lets a
 planner click a junction, "flood" it, and instantly read the rerouting cost and
-the drop in network efficiency.
+the drop in network efficiency. Thank You.
 
 > Full specification: [`roadmap.md`](roadmap.md). Live build status:
 > [`PROJECT_STATE.md`](PROJECT_STATE.md).
