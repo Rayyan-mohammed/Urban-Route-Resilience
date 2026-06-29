@@ -15,7 +15,7 @@ deliberately excluded — finale only.
 | ID  | Milestone                         | Roadmap | Status | Notes |
 |-----|-----------------------------------|---------|--------|-------|
 | M0  | Project foundation                | §12 P1  | ✅     | Repo skeleton, env, config, paths, logging, state ledger |
-| M1  | Data pipeline (tiling + OSM split)| §3, P2  | ✅*    | geo/osm/build/split + CLI. Offline logic unit-tested (6 pass). *Live OSMnx run + 4 geo tests pending conda env install. |
+| M1  | Data pipeline (tiling + OSM split)| §3, P2  | ✅     | geo/osm/build/split + CLI. All 10 tests pass. Live OSMnx run produced 200 Indiranagar mask tiles + manifest. |
 | M2  | Synthetic occlusion generator     | §3.3 P2 | ⬜     | tree/shadow/cloud/vehicle paste — occlusion-recall signal |
 | M3  | Baseline segmentation model       | §10 P3  | ⬜     | U-Net/D-LinkNet, Dice+Focal, IoU — the demo "contrast" |
 | M4  | SegFormer-B2 + clDice             | §10 P4  | ⬜     | Topology loss + occlusion training (train on Colab/Kaggle) |
@@ -30,9 +30,12 @@ deliberately excluded — finale only.
 ---
 
 ## Currently building
-- **M0 + M1 code complete & unit-tested (offline).** Next up: **M2 — Synthetic occlusion**.
-- ⏳ User installing Miniforge → then run `pytest` (4 geo tests) + live
-  `python scripts/build_dataset.py --only indiranagar_blr` to produce real tiles.
+- **M0 + M1 done and verified.** Conda env `route-resilience` installed; all 10
+  tests pass; 200 Indiranagar mask tiles generated. Next up: **M2 — Synthetic occlusion**.
+
+## Environment (installed 2026-06-29)
+- Miniforge at `C:\Users\HP\miniforge3`; env `route-resilience` (Python 3.11).
+- Run tools via that env's python; GDAL_DATA/PROJ_LIB are set on `conda activate`.
 
 ## Open blockers / risks (live)
 - ⚠️ **Finale rules unconfirmed** (roadmap §9.5): are pre-trained weights allowed
