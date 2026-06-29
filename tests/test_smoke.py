@@ -6,8 +6,6 @@ can both verify the package imports, paths resolve, and configs load.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 
 def test_package_imports():
     import route_resilience

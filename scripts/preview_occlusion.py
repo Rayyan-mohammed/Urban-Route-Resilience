@@ -81,7 +81,7 @@ def main() -> None:
             COLS[2],
         ]
         y = MARGIN + i * (cell_h + GAP)
-        for c, (panel, cap) in enumerate(zip(panels, caps)):
+        for c, (panel, cap) in enumerate(zip(panels, caps, strict=True)):
             x = MARGIN + c * (CELL + GAP)
             draw.text((x, y + 3), cap, fill=(20, 20, 20))
             canvas.paste(panel, (x, y + CAP))

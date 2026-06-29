@@ -17,7 +17,7 @@ from route_resilience.config import load_config
 
 # ----------------------------- tiling geometry -----------------------------
 def test_tile_grid_count_and_georef():
-    rasterio = pytest.importorskip("rasterio")  # noqa: F841
+    pytest.importorskip("rasterio")
     from route_resilience.data.geo import make_tile_grid
 
     # 1000m x 1000m extent, 100px tiles @ 1 m/px (=100m tiles), no overlap -> 10x10.
@@ -48,7 +48,7 @@ def test_tile_grid_overlap_increases_count():
 
 def test_rasterize_roads_connectivity():
     pytest.importorskip("rasterio")
-    shapely = pytest.importorskip("shapely")
+    pytest.importorskip("shapely")
     from shapely.geometry import LineString
 
     from route_resilience.data.geo import make_tile_grid, rasterize_roads

@@ -74,9 +74,7 @@ def make_tile_grid(
     y_starts = np.arange(south, north, step_m)  # south edges
 
     tiles: list[TileRef] = []
-    n_rows = len(y_starts)
     for ri, y0 in enumerate(reversed(y_starts)):  # north-to-south for intuitive row idx
-        row = n_rows - 1 - ri  # not used in id beyond ordering clarity
         for ci, x0 in enumerate(x_starts):
             tile_bounds = (x0, y0, x0 + extent_m, y0 + extent_m)
             # north-up transform: origin at top-left = (west, north_of_tile)
