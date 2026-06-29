@@ -19,8 +19,8 @@ deliberately excluded — finale only.
 | M2  | Synthetic occlusion generator     | §3.3 P2 | ✅     | occlusion.py (4 occluders, road-biased) + synth_image.py + preview. 8 tests pass; assets/occlusion_preview.png. |
 | M3  | Baseline segmentation model       | §10 P3  | ✅*    | U-Net(resnet34)+Dice/Focal, shared Dataset, device-agnostic trainer, IoU/Dice/P/R. 22 tests pass; CPU dry-run trains end-to-end + checkpoints. *Full train pending Colab GPU run. |
 | M4  | SegFormer-B2 + clDice             | §10 P4  | ✅*    | smp Segformer/mit_b2, soft-clDice topology loss + loss factory. clDice 5x more break-sensitive than Dice (proven). CPU dry-run trains. *Full train pending Colab GPU. |
-| M5  | Evaluation pipeline               | §11     | ✅*    | clDice score, occlusion-recall, connectivity ratio + per-terrain report & baseline/ours compare. 6 tests pass; eval dry-run works. *APLS deferred to M6 (needs graphs); full numbers pending GPU weights. |
-| M6  | Skeleton → graph                  | §7 P2   | ⬜     | scikit-image skeletonize → NetworkX weighted graph |
+| M5  | Evaluation pipeline               | §11     | ✅     | clDice, occlusion-recall, connectivity ratio, APLS + per-terrain report & baseline/ours compare. APLS now wired in (M6). Full numbers pending GPU weights. |
+| M6  | Skeleton → graph                  | §7 P2   | ✅     | skeletonize → NetworkX graph w/ junction-merge + degree-2 dissolve, geo-referenced nodes, weighted edges, graph stats, APLS metric. 7 tests pass; graph_preview asset. |
 | M7  | Graph healing                     | §7 P2   | ⬜     | MST/Disjoint-Set bridging (GNN link-pred = stretch) |
 | M8  | Resilience digital twin           | §7 P3   | ⬜     | dynamic betweenness, hazard ablation, Resilience Index |
 | M9  | Dashboard backend                 | §7 P4   | ⬜     | graph/twin service layer, GeoJSON export |
@@ -30,11 +30,11 @@ deliberately excluded — finale only.
 ---
 
 ## Currently building
-- **M0–M5 done and verified.** 34 tests pass, ruff clean. Eval pipeline produces
-  per-terrain §11 report + baseline-vs-ours compare. Next up: **M6 — Skeleton→Graph**
-  (scikit-image skeletonize → NetworkX), which also unlocks deferred **APLS**.
+- **M0–M6 done and verified.** 41 tests pass, ruff clean. Mask→graph works on real
+  tiles (clean junctions, 1 component, geo-referenced). Next up: **M7 — Graph healing**
+  (MST/Disjoint-Set bridging of gaps; GNN link-prediction if time).
 - Pending GPU (batch later on Colab): full baseline + SegFormer+clDice runs, then
-  `python scripts/evaluate.py --checkpoint <baseline> --compare <segformer>` for the money table.
+  `python scripts/evaluate.py --checkpoint <baseline> --compare <segformer> --apls` for the money table.
   - baseline:  `python scripts/train.py`
   - segformer: `python scripts/train.py --config base.yaml data.yaml model_segformer.yaml train.yaml train_segformer.yaml`
 

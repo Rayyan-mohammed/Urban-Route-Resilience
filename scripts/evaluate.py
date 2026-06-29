@@ -35,17 +35,18 @@ def main() -> None:
     ap.add_argument("--split", default="test", choices=["train", "val", "test"])
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--max-tiles", type=int, default=None)
+    ap.add_argument("--apls", action="store_true", help="also compute graph APLS (slower)")
     ap.add_argument("-o", "--override", action="append", default=[])
     args = ap.parse_args()
 
     cfg = load_config(*args.config, overrides=args.override)
     rep_a = evaluate(cfg, checkpoint=args.checkpoint, split=args.split,
-                     dry_run=args.dry_run, max_tiles=args.max_tiles)
+                     dry_run=args.dry_run, max_tiles=args.max_tiles, compute_apls=args.apls)
     print_report(rep_a)
 
     if args.compare:
         rep_b = evaluate(cfg, checkpoint=args.compare, split=args.split,
-                         dry_run=args.dry_run, max_tiles=args.max_tiles)
+                         dry_run=args.dry_run, max_tiles=args.max_tiles, compute_apls=args.apls)
         print_report(rep_b)
         print_comparison(rep_a, rep_b)
 

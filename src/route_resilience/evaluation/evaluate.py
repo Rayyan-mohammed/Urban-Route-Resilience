@@ -25,6 +25,8 @@ from ..data.build import read_manifest
 from ..data.dataset import build_transforms
 from ..data.occlusion import apply_occlusion
 from ..data.synth_image import synthesize_image
+from ..graph.build import mask_to_graph
+from ..graph.metrics import graph_apls
 from ..models.baseline import build_model
 from ..paths import METRICS, PROCESSED, ensure_dirs
 from ..utils import get_logger
@@ -40,6 +42,7 @@ class _Acc:
         self.tp = self.fp = self.fn = 0.0
         self.cldice: list[float] = []
         self.conn: list[float] = []
+        self.apls: list[float] = []
         self.occ_tp = 0
         self.occ_denom = 0
         self.n = 0
@@ -58,6 +61,11 @@ class _Acc:
         self.occ_tp += rec
         self.occ_denom += denom
 
+    def add_graph(self, pred: np.ndarray, true: np.ndarray, res: float) -> None:
+        g_pred, _ = mask_to_graph(pred.astype(np.uint8), resolution_m=res)
+        g_true, _ = mask_to_graph(true.astype(np.uint8), resolution_m=res)
+        self.apls.append(graph_apls(g_true, g_pred, resolution_m=res))
+
     def compute(self) -> dict:
         e = 1e-7
         return {
@@ -68,6 +76,7 @@ class _Acc:
             "recall": self.tp / (self.tp + self.fn + e),
             "cldice": float(np.mean(self.cldice)) if self.cldice else 0.0,
             "connectivity_ratio": float(np.mean(self.conn)) if self.conn else 0.0,
+            "apls": float(np.mean(self.apls)) if self.apls else None,
             "occlusion_recall": (self.occ_tp / self.occ_denom) if self.occ_denom else None,
         }
 
@@ -118,6 +127,7 @@ def evaluate(
     split: str = "test",
     dry_run: bool = False,
     max_tiles: int | None = None,
+    compute_apls: bool = False,
 ) -> dict:
     ensure_dirs()
     device = "cpu" if dry_run else _resolve_device(cfg)
@@ -151,6 +161,8 @@ def evaluate(
         for acc in (overall, per[row["terrain"]]):
             acc.add_clean(clean_pred, mask)
             acc.add_occ(occ_pred, mask, res.occluded_road_mask)
+            if compute_apls:
+                acc.add_graph(clean_pred, mask, float(cfg.data.resolution_m))
 
     report = {
         "split": split,
@@ -169,7 +181,7 @@ def evaluate(
 
 
 # ------------------------------ pretty print ------------------------------
-_COLS = ["iou", "dice", "cldice", "connectivity_ratio", "recall", "occlusion_recall"]
+_COLS = ["iou", "dice", "cldice", "apls", "connectivity_ratio", "recall", "occlusion_recall"]
 
 
 def _fmt(v) -> str:
