@@ -47,6 +47,9 @@ data/processed/**
 !assets/**
 !demo/**
 
+# OSMnx API response cache
+cache/
+
 # ---- OS / IDE ----
 .DS_Store
 Thumbs.db
