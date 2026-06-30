@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from .dashboard.service import load_tile_graph
 from .graph.build import graph_stats
-from .resilience.centrality import critical_nodes, node_betweenness
+from .resilience.centrality import critical_nodes
 from .resilience.hazard import RadiusHazard
 from .resilience.simulate import resilience_report
 from .utils import get_logger
@@ -38,7 +38,6 @@ def run_tile_pipeline(
     if g.number_of_nodes() == 0:
         return {"mask_path": str(mask_path), "crs": crs, "empty": True}
 
-    bc = node_betweenness(g)
     crit = critical_nodes(g, top=top_k)
     critical = [
         {"lon": g.nodes[n]["lon"], "lat": g.nodes[n]["lat"], "betweenness": float(v)}
