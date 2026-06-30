@@ -42,6 +42,10 @@ pip install -e .
 
 # 3. Sanity check
 pytest -q
+
+# 4. Build a demo dataset (OSMnx road masks for Bengaluru) and launch the dashboard
+python scripts/build_dataset.py
+streamlit run src/route_resilience/dashboard/app.py
 ```
 
 > **No local GPU?** That's expected. Phase II–IV (graph, twin, dashboard) run on

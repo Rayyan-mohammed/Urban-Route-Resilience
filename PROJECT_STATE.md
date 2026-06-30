@@ -23,19 +23,21 @@ deliberately excluded — finale only.
 | M6  | Skeleton → graph                  | §7 P2   | ✅     | skeletonize → NetworkX graph w/ junction-merge + degree-2 dissolve, geo-referenced nodes, weighted edges, graph stats, APLS metric. 7 tests pass; graph_preview asset. |
 | M7  | Graph healing                     | §7 P2   | ✅     | Disjoint-Set/Kruskal gap bridging (endpoint-anchored, radius-limited), healed=True tags. 5 tests pass; healing_preview (4 comps→1, 3 bridges). GNN = stretch. |
 | M8  | Resilience digital twin           | §7 P3   | ✅     | betweenness + Latora-Marchiori efficiency; pluggable Hazard (Node/Radius/Band); ablation→Resilience Index; reroute_cost. 12 tests; resilience_preview (RI=0.87). |
-| M9  | Dashboard backend                 | §7 P4   | ⬜     | graph/twin service layer, GeoJSON export |
-| M10 | Dashboard frontend                | §15 P4  | ⬜     | Streamlit + Leaflet, click-to-flood, live reroute |
+| M9  | Dashboard backend                 | §7 P4   | ✅     | service.py: load/heal/reproject(UTM→WGS84)/flood/reroute/build_map. 6 tests pass. |
+| M10 | Dashboard frontend                | §15 P4  | ✅     | Streamlit + folium/Leaflet on OSM basemap; click-to-flood, radius slider, live RI + recomputed betweenness + reroute. Boots clean (headless smoke). |
 | M11 | Docs / tests / demo assets        | §12 P7-8| ⬜     | README, pytest suite, fallback demo video assets |
 
 ---
 
 ## Currently building
-- **M0–M8 done and verified.** 57 tests pass, ruff clean. Resilience twin runs on
-  real healed graphs: betweenness criticality, hazard ablation, recomputed
-  betweenness, Resilience Index (E_after/E_before). **USP fully built end-to-end.**
-  Next up: **M9/M10 — Dashboard** (Streamlit + Leaflet, click-to-flood, live reroute).
+- **M0–M10 done and verified.** 63 tests pass, ruff clean. Full interactive
+  dashboard boots clean (Streamlit + Leaflet on OSM basemap, click-to-flood, live
+  Resilience Index + recomputed betweenness + reroute). **All four USP pillars
+  delivered.** Next up: **M11 — Docs / tests / demo assets**, then finale-only
+  Cartosat-3 fine-tuning.
 - Hazard layer is synthetic + pluggable (Node/Radius/Band); real DEM/flood raster
   drops into the same `Hazard.impacted_nodes` interface later.
+- Run dashboard: `streamlit run src/route_resilience/dashboard/app.py`
 - Pending GPU (batch later on Colab): full baseline + SegFormer+clDice runs, then
   `python scripts/evaluate.py --checkpoint <baseline> --compare <segformer> --apls` for the money table.
   - baseline:  `python scripts/train.py`
