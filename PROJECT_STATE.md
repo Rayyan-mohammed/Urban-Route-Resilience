@@ -25,19 +25,22 @@ deliberately excluded — finale only.
 | M8  | Resilience digital twin           | §7 P3   | ✅     | betweenness + Latora-Marchiori efficiency; pluggable Hazard (Node/Radius/Band); ablation→Resilience Index; reroute_cost. 12 tests; resilience_preview (RI=0.87). |
 | M9  | Dashboard backend                 | §7 P4   | ✅     | service.py: load/heal/reproject(UTM→WGS84)/flood/reroute/build_map. 6 tests pass. |
 | M10 | Dashboard frontend                | §15 P4  | ✅     | Streamlit + folium/Leaflet on OSM basemap; click-to-flood, radius slider, live RI + recomputed betweenness + reroute. Boots clean (headless smoke). |
-| M11 | Docs / tests / demo assets        | §12 P7-8| ⬜     | README, pytest suite, fallback demo video assets |
+| M11 | Docs / tests / demo assets        | §12 P7-8| ✅     | end-to-end pipeline.py + CLI; ARCHITECTURE.md; README demo embed (4 assets); Colab notebook; evaluate() orchestrator tests. 68 tests pass. |
 
 ---
 
 ## Currently building
-- **M0–M10 done and verified.** 63 tests pass, ruff clean. Full interactive
-  dashboard boots clean (Streamlit + Leaflet on OSM basemap, click-to-flood, live
-  Resilience Index + recomputed betweenness + reroute). **All four USP pillars
-  delivered.** Next up: **M11 — Docs / tests / demo assets**, then finale-only
-  Cartosat-3 fine-tuning.
+- **M0–M11 ALL DONE and verified.** 68 tests pass, ruff clean. Full pre-finale
+  build complete: extraction → graph → heal → twin → dashboard, plus end-to-end
+  pipeline, docs, Colab notebook, demo assets. **Nothing left but the finale.**
+- Remaining = **finale only**: Cartosat-3 fine-tuning + feed predicted mask into
+  `pipeline.run_tile_pipeline` + wire a real DEM hazard. Surface documented in
+  docs/ARCHITECTURE.md.
 - Hazard layer is synthetic + pluggable (Node/Radius/Band); real DEM/flood raster
   drops into the same `Hazard.impacted_nodes` interface later.
+- Run pipeline: `python scripts/run_pipeline.py --save`
 - Run dashboard: `streamlit run src/route_resilience/dashboard/app.py`
+- Train (Colab GPU): `notebooks/train_colab.ipynb`
 - Pending GPU (batch later on Colab): full baseline + SegFormer+clDice runs, then
   `python scripts/evaluate.py --checkpoint <baseline> --compare <segformer> --apls` for the money table.
   - baseline:  `python scripts/train.py`
