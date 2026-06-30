@@ -30,6 +30,37 @@ EO tiles ──▶ I.  SegFormer-B2 + clDice + synthetic occlusion  ──▶ co
    layer with *dynamically recalculated* betweenness and a Latora–Marchiori
    efficiency-based **Resilience Index**.
 
+## See it work
+
+**1 — Synthetic occlusion training signal** (Phase I). Tree canopy, building
+shadow, cloud and vehicles are pasted over roads in the *image*; the target mask
+stays complete, so the model must learn to infer hidden roads. Red = the road
+pixels it must recover (the occlusion-recall metric).
+
+![occlusion](assets/occlusion_preview.png)
+
+**2 — Skeleton → routable graph** (Phase II). The mask is skeletonized and traced
+into a geo-referenced NetworkX graph; junction tangles are merged so nodes are
+only real intersections (red) and endpoints (green).
+
+![graph](assets/graph_preview.png)
+
+**3 — Graph healing** (Phase II). Occlusion gaps fragment the network (left, each
+component a different colour); Disjoint-Set healing bridges them back into one
+routable graph with the minimum number of bridges (right, in red).
+
+![healing](assets/healing_preview.png)
+
+**4 — Resilience digital twin** (Phase III). Junctions are coloured by betweenness
+criticality (left); "flooding" the most critical one ablates it and **recomputes**
+betweenness on the damaged network (right), yielding the Resilience Index
+(E_after / E_before).
+
+![resilience](assets/resilience_preview.png)
+
+The interactive version (Phase IV) puts this on a live Leaflet/OpenStreetMap
+basemap — click any junction to flood it and read the live index and reroute cost.
+
 ## Quickstart
 
 ```bash
@@ -43,10 +74,18 @@ pip install -e .
 # 3. Sanity check
 pytest -q
 
-# 4. Build a demo dataset (OSMnx road masks for Bengaluru) and launch the dashboard
+# 4. Build a demo dataset (OSMnx road masks for Bengaluru)
 python scripts/build_dataset.py
+
+# 5. Run the full mask -> graph -> heal -> resilience pipeline on a tile
+python scripts/run_pipeline.py --save
+
+# 6. Launch the interactive dashboard
 streamlit run src/route_resilience/dashboard/app.py
 ```
+
+> Architecture & finale plan: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> Training on Colab/Kaggle (no local GPU needed): [`docs/TRAINING.md`](docs/TRAINING.md).
 
 > **No local GPU?** That's expected. Phase II–IV (graph, twin, dashboard) run on
 > CPU. Heavy training (Phase I) runs on Colab/Kaggle — see `docs/TRAINING.md`.
