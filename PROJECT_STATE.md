@@ -17,8 +17,8 @@ deliberately excluded — finale only.
 | M0  | Project foundation                | §12 P1  | ✅     | Repo skeleton, env, config, paths, logging, state ledger |
 | M1  | Data pipeline (tiling + OSM split)| §3, P2  | ✅     | geo/osm/build/split + CLI. All 10 tests pass. Live OSMnx run produced 200 Indiranagar mask tiles + manifest. |
 | M2  | Synthetic occlusion generator     | §3.3 P2 | ✅     | occlusion.py (4 occluders, road-biased) + synth_image.py + preview. 8 tests pass; assets/occlusion_preview.png. |
-| M3  | Baseline segmentation model       | §10 P3  | ✅*    | U-Net(resnet34)+Dice/Focal, shared Dataset, device-agnostic trainer, IoU/Dice/P/R. 22 tests pass; CPU dry-run trains end-to-end + checkpoints. *Full train pending Colab GPU run. |
-| M4  | SegFormer-B2 + clDice             | §10 P4  | ✅*    | smp Segformer/mit_b2, soft-clDice topology loss + loss factory. clDice 5x more break-sensitive than Dice (proven). CPU dry-run trains. *Full train pending Colab GPU. |
+| M3  | Baseline segmentation model       | §10 P3  | ✅*    | U-Net(resnet34) **+ D-LinkNet** (own impl: dilated D-block + LinkNet decoder over smp resnet encoder), Dice/Focal, shared Dataset, device-agnostic trainer, IoU/Dice/P/R. CPU dry-run trains end-to-end + checkpoints (both archs). *Full train pending Colab GPU run. |
+| M4  | SegFormer-B2 + clDice + TTA        | §10 P4  | ✅*    | smp Segformer/mit_b2, soft-clDice topology loss + loss factory. clDice 5x more break-sensitive than Dice (proven). **Multi-scale+flip TTA (models/tta.py) wired into evaluate (`--tta` / cfg.eval.tta).** CPU dry-run trains + TTA eval runs. *Full train pending Colab GPU. |
 | M5  | Evaluation pipeline               | §11     | ✅     | clDice, occlusion-recall, connectivity ratio, APLS + per-terrain report & baseline/ours compare. APLS now wired in (M6). Full numbers pending GPU weights. |
 | M6  | Skeleton → graph                  | §7 P2   | ✅     | skeletonize → NetworkX graph w/ junction-merge + degree-2 dissolve, geo-referenced nodes, weighted edges, graph stats, APLS metric. 7 tests pass; graph_preview asset. |
 | M7  | Graph healing                     | §7 P2   | ✅     | Disjoint-Set/Kruskal gap bridging (endpoint-anchored, radius-limited), healed=True tags. 5 tests pass; healing_preview (4 comps→1, 3 bridges). GNN = stretch. |
@@ -30,9 +30,17 @@ deliberately excluded — finale only.
 ---
 
 ## Currently building
-- **M0–M11 ALL DONE and verified.** 68 tests pass, ruff clean. Full pre-finale
+- **M0–M11 ALL DONE and verified.** 76 tests pass, ruff clean. Full pre-finale
   build complete: extraction → graph → heal → twin → dashboard, plus end-to-end
   pipeline, docs, Colab notebook, demo assets. **Nothing left but the finale.**
+- **2026-07-15 — closed the two roadmap §12 P3/P4 code gaps:**
+  D-LinkNet baseline (`models/dlinknet.py`, `configs/model_dlinknet.yaml` +
+  `train_dlinknet.yaml`, `arch: DLinkNet` dispatched by the factory) and
+  multi-scale+flip TTA (`models/tta.py`, wired into `evaluate()` via `--tta` /
+  `cfg.eval.tta`). +8 tests (test_dlinknet, test_tta). Train D-LinkNet:
+  `python scripts/train.py --config base.yaml data.yaml model_dlinknet.yaml train.yaml train_dlinknet.yaml`.
+  Evaluate with TTA: add `--tta` to `scripts/evaluate.py`.
+  Still pending (needs GPU, not code): the actual Colab training runs → real weights + metric tables.
 - Remaining = **finale only**: Cartosat-3 fine-tuning + feed predicted mask into
   `pipeline.run_tile_pipeline` + wire a real DEM hazard. Surface documented in
   docs/ARCHITECTURE.md.
