@@ -1,0 +1,12 @@
+# D-LinkNet (Zhou et al., 2018) — the strong-CNN baseline (§4.1, §10). The
+# DeepGlobe winner and "what competitors will use". Not in smp, so it is our own
+# implementation (src/route_resilience/models/dlinknet.py); `arch: DLinkNet` is
+# special-cased by the model factory. Same trainer/loss as the U-Net baseline;
+# only this file changes.
+
+model:
+  arch: DLinkNet
+  encoder: resnet34           # ResNet backbone (D-LinkNet34); any smp resnet works
+  encoder_weights: imagenet   # set null for offline/dry-run (no download)
+  in_channels: 3
+  classes: 1

@@ -1,0 +1,9 @@
+# Training overrides for the D-LinkNet baseline (§10). Merge AFTER train.yaml:
+#   python scripts/train.py --config base.yaml data.yaml model_dlinknet.yaml \
+#                                    train.yaml train_dlinknet.yaml
+# A CNN like the U-Net baseline, so it keeps the region-only dice_focal loss (no
+# topology objective) — that is exactly the model our SegFormer+clDice must beat.
+
+train:
+  out_name: dlinknet
+  # loss stays dice_focal (inherited from train.yaml) — the pixel-loss control.
