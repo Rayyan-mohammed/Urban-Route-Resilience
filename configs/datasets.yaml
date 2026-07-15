@@ -1,0 +1,30 @@
+# Real EO road datasets (roadmap §3.2). Documents each source's on-disk layout,
+# nominal GSD, and how to ingest it into the manifest with real imagery.
+# The ingest CLI (scripts/ingest_dataset.py) writes image+mask GeoTIFF tiles and
+# sets `image_path`, so training uses real pixels instead of the synthetic stand-in.
+#
+# Kaggle note: attach the dataset from the right-hand "Add Data" panel; it mounts
+# read-only under /kaggle/input/<slug>/. DeepGlobe is the easy one (already a
+# Kaggle dataset). SpaceNet is on AWS (requester-pays); OpenSatMap on HuggingFace.
+
+datasets:
+  deepglobe:
+    role: pretrain baseline          # D-LinkNet's home benchmark (§3.2)
+    gsd_m: 0.5
+    layout: "<root>/*_sat.jpg + <root>/*_mask.png"
+    kaggle: balraj98/deepglobe-road-extraction-dataset
+    example_root: /kaggle/input/deepglobe-road-extraction-dataset/train
+
+  spacenet:
+    role: pretrain + topology eval    # has the official APLS graph GT (§3.2)
+    gsd_m: 0.3
+    layout: "<root>/**/PS-RGB/*.tif  +  <root>/**/*.geojson (road labels)"
+    source: AWS s3://spacenet-dataset (requester-pays)
+
+  opensatmap:
+    role: pretrain / generalisation   # newer large-scale road set (§3.2)
+    gsd_m: 0.5
+    layout: "images dir + masks dir, matched by filename stem"
+    source: HuggingFace / project page
+
+  # OSM (via OSMnx) stays the geo-referenced demo-city source; see configs/places.yaml.

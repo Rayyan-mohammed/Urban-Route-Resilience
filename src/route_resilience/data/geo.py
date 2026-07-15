@@ -121,6 +121,34 @@ def rasterize_roads(geometries, tile: TileRef, buffer_m: float) -> np.ndarray:
     )
 
 
+def save_image_geotiff(path, image: np.ndarray, tile: TileRef) -> None:
+    """Persist an RGB tile (H,W,3 uint8) as a 3-band GeoTIFF, geo-referenced.
+
+    Used when ingesting real EO datasets (DeepGlobe/SpaceNet/OpenSatMap): the
+    paired imagery is written next to its mask so `RoadTileDataset` loads it via
+    `image_path` and training runs on REAL pixels instead of synthesised ones.
+    """
+    from pathlib import Path
+
+    if image.ndim != 3 or image.shape[2] != 3:
+        raise ValueError(f"expected (H,W,3) RGB, got shape {image.shape}")
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    arr = np.ascontiguousarray(image.astype("uint8").transpose(2, 0, 1))  # HWC -> CHW
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=tile.height,
+        width=tile.width,
+        count=3,
+        dtype="uint8",
+        crs=tile.crs,
+        transform=tile.transform,
+        compress="deflate",
+    ) as dst:
+        dst.write(arr)
+
+
 def save_mask_geotiff(path, mask: np.ndarray, tile: TileRef) -> None:
     """Persist a mask as a single-band GeoTIFF, preserving geo-referencing.
 

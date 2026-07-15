@@ -1,0 +1,273 @@
+"""Ingest real EO road datasets into the manifest contract (roadmap §3.2).
+
+The OSMnx pipeline (build.py) gives geo-referenced *masks* but no imagery, so
+training falls back to synthesised pseudo-images. That is only a plumbing
+rehearsal. This module wires in the roadmap's real datasets so `image_path` is
+populated and the model trains on ACTUAL satellite pixels:
+
+    SpaceNet Roads      georeferenced GeoTIFF + road GeoJSON  -> rasterise labels
+    DeepGlobe           <id>_sat.jpg + <id>_mask.png pairs
+    OpenSatMap / other  generic image-dir + mask-dir (matched by filename stem)
+
+Everything funnels through one core, `ingest_pairs`, which tiles each big
+image+mask into `tile_size` sub-tiles, writes a 3-band image GeoTIFF next to a
+1-band mask GeoTIFF, filters near-empty tiles, and returns manifest rows with the
+SAME schema build.py uses — so the split, training, and eval code need no change.
+
+Non-georeferenced datasets get a synthetic north-up transform at the dataset's
+nominal GSD; that is enough for training/eval (the graph/resilience map is only
+geographically meaningful for the OSM demo city + finale Cartosat tiles).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Iterator
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from omegaconf import DictConfig
+from rasterio.transform import from_origin
+
+from ..paths import PROCESSED
+from ..utils import get_logger
+from . import geo
+from .build import MANIFEST_COLUMNS
+from .geo import TileRef
+
+log = get_logger(__name__)
+
+# Nominal ground sample distance (m/pixel) per source; overridable at call time.
+DEFAULT_GSD_M = {
+    "deepglobe": 0.5,      # DigitalGlobe, ~0.5 m
+    "spacenet": 0.3,       # WorldView-3 PS-RGB, ~0.3 m
+    "opensatmap": 0.5,     # mixed high-res
+    "folder": 0.5,
+}
+_PLACEHOLDER_CRS = "EPSG:32643"  # projected metres; real geo only for the demo city
+
+
+def _tile_starts(size: int, tile: int, step: int) -> list[int]:
+    """Start offsets covering [0, size) with `tile`-wide windows, incl. the edge."""
+    if size <= tile:
+        return [0]
+    starts = list(range(0, size - tile + 1, max(1, step)))
+    if starts[-1] != size - tile:
+        starts.append(size - tile)  # flush-right/bottom tile so edges aren't dropped
+    return starts
+
+
+def _tileref(base_id: str, r0: int, c0: int, tile: int, gsd: float, img_h: int) -> TileRef:
+    """Synthetic north-up TileRef for a pixel window (top-left at row r0, col c0)."""
+    # World origin: top-left of the whole source at (0, img_h*gsd); north-up.
+    x0 = c0 * gsd
+    y_top = (img_h - r0) * gsd
+    transform = from_origin(x0, y_top, gsd, gsd)
+    bounds = (x0, y_top - tile * gsd, x0 + tile * gsd, y_top)
+    return TileRef(
+        tile_id=f"{base_id}_r{r0:04d}_c{c0:04d}",
+        transform=transform,
+        width=tile,
+        height=tile,
+        crs=_PLACEHOLDER_CRS,
+        bounds=bounds,
+    )
+
+
+def ingest_pairs(
+    pairs: Iterable[tuple[np.ndarray, np.ndarray, str]],
+    cfg: DictConfig,
+    *,
+    source: str,
+    terrain: str,
+    gsd_m: float | None = None,
+    out_dir: Path | None = None,
+    limit: int | None = None,
+) -> pd.DataFrame:
+    """Tile (image_HWC, mask_HW, base_id) triples into manifest rows with imagery.
+
+    - image: uint8 (H,W,3); mask: any (H,W) where >0 means road.
+    - Writes `data/processed/images/<tile>.tif` (3-band) + `masks/<tile>.tif`.
+    - Keeps only tiles with road fraction >= cfg.data.min_road_frac.
+    """
+    d = cfg.data
+    tile = int(d.tile_size)
+    overlap = float(d.overlap)
+    gsd = float(gsd_m if gsd_m is not None else DEFAULT_GSD_M.get(source, 0.5))
+    step = max(1, int(tile * (1.0 - overlap)))
+    out_dir = Path(out_dir) if out_dir else PROCESSED
+    img_dir, mask_dir = out_dir / "images", out_dir / "masks"
+
+    rows: list[dict] = []
+    n_src = 0
+    for image, mask, base_id in pairs:
+        if limit is not None and n_src >= limit:
+            break
+        n_src += 1
+        if image.ndim != 3 or image.shape[2] != 3:
+            log.warning("skip %s: image not (H,W,3), got %s", base_id, image.shape)
+            continue
+        h, w = image.shape[:2]
+        if mask.shape[:2] != (h, w):
+            log.warning("skip %s: mask %s != image %s", base_id, mask.shape, (h, w))
+            continue
+        mbin = (mask > 0).astype(np.uint8)
+        for r0 in _tile_starts(h, tile, step):
+            for c0 in _tile_starts(w, tile, step):
+                m = mbin[r0 : r0 + tile, c0 : c0 + tile]
+                road_frac = float(m.mean())
+                if road_frac < float(d.min_road_frac):
+                    continue
+                ref = _tileref(f"{source}_{base_id}", r0, c0, tile, gsd, h)
+                img_t = image[r0 : r0 + tile, c0 : c0 + tile].astype(np.uint8)
+                img_path = img_dir / f"{ref.tile_id}.tif"
+                mask_path = mask_dir / f"{ref.tile_id}.tif"
+                geo.save_image_geotiff(img_path, img_t, ref)
+                geo.save_mask_geotiff(mask_path, m, ref)
+                rows.append({
+                    "tile_id": ref.tile_id, "place": source, "terrain": terrain,
+                    "mask_path": str(mask_path), "image_path": str(img_path),
+                    "crs": ref.crs, "west": ref.bounds[0], "south": ref.bounds[1],
+                    "east": ref.bounds[2], "north": ref.bounds[3],
+                    "width": tile, "height": tile, "resolution_m": gsd,
+                    "road_frac": road_frac, "split": "",
+                })
+    log.info("%s: %d source images -> %d road-dense tiles", source, n_src, len(rows))
+    return pd.DataFrame(rows, columns=MANIFEST_COLUMNS)
+
+
+# --------------------------- source adapters -----------------------------
+def _read_rgb(path: Path) -> np.ndarray:
+    """Read an image file as uint8 (H,W,3). PIL avoids the Windows GDAL/JPEG quirks."""
+    from PIL import Image
+
+    return np.asarray(Image.open(path).convert("RGB"), dtype=np.uint8)
+
+
+def _read_mask(path: Path) -> np.ndarray:
+    from PIL import Image
+
+    return np.asarray(Image.open(path).convert("L"), dtype=np.uint8)
+
+
+def iter_deepglobe(root: Path) -> Iterator[tuple[np.ndarray, np.ndarray, str]]:
+    """DeepGlobe Road Extraction: `<id>_sat.jpg` + `<id>_mask.png` in one folder."""
+    root = Path(root)
+    sats = sorted(root.rglob("*_sat.jpg")) + sorted(root.rglob("*_sat.png"))
+    if not sats:
+        log.warning("deepglobe: no *_sat.{jpg,png} under %s", root)
+    for sat in sats:
+        mask = sat.with_name(sat.name.replace("_sat.", "_mask."))
+        if mask.suffix == ".jpg":
+            mask = mask.with_suffix(".png")
+        if not mask.exists():
+            # test split ships images without masks — skip silently
+            continue
+        base = sat.name.split("_sat.")[0]
+        yield _read_rgb(sat), _read_mask(mask), base
+
+
+def iter_folder(images: Path, masks: Path) -> Iterator[tuple[np.ndarray, np.ndarray, str]]:
+    """Generic (OpenSatMap etc.): image dir + mask dir matched by filename stem."""
+    images, masks = Path(images), Path(masks)
+    mask_by_stem = {p.stem: p for p in masks.rglob("*") if p.suffix.lower() in
+                    (".png", ".tif", ".tiff", ".jpg", ".jpeg")}
+    for img in sorted(images.rglob("*")):
+        if img.suffix.lower() not in (".png", ".tif", ".tiff", ".jpg", ".jpeg"):
+            continue
+        m = mask_by_stem.get(img.stem)
+        if m is None:
+            continue
+        yield _read_rgb(img), _read_mask(m), img.stem
+
+
+def iter_spacenet(root: Path, *, road_buffer_m: float = 2.0) -> Iterator[tuple[np.ndarray, np.ndarray, str]]:
+    """SpaceNet Roads: georeferenced RGB GeoTIFFs + road GeoJSON labels.
+
+    Imagery under `**/PS-RGB/*.tif` (or `**/RGB-PanSharpen/*.tif`); labels under
+    `**/geojson*/**/*.geojson`, matched by the shared AOI/chip id in the filename.
+    Roads are reprojected to the image CRS and rasterised on the image's own
+    transform, so labels align to pixels exactly.
+    """
+    import geopandas as gpd
+    import rasterio
+
+    root = Path(root)
+    imgs = sorted(root.rglob("*PS-RGB*.tif")) + sorted(root.rglob("*RGB-PanSharpen*.tif"))
+    geojsons = list(root.rglob("*.geojson"))
+    by_id: dict[str, Path] = {}
+    for g in geojsons:
+        by_id[_chip_id(g.stem)] = g
+    if not imgs:
+        log.warning("spacenet: no PS-RGB/RGB-PanSharpen GeoTIFFs under %s", root)
+    for img_path in imgs:
+        cid = _chip_id(img_path.stem)
+        gj = by_id.get(cid)
+        if gj is None:
+            continue
+        with rasterio.open(img_path) as ds:
+            bands = min(3, ds.count)
+            arr = ds.read(list(range(1, bands + 1))).transpose(1, 2, 0)
+            img = _to_uint8_rgb(arr)
+            ref = TileRef("sn", ds.transform, ds.width, ds.height, str(ds.crs),
+                          tuple(ds.bounds))
+            crs = ds.crs
+        roads = gpd.read_file(gj)
+        if roads.empty:
+            mask = np.zeros((ref.height, ref.width), np.uint8)
+        else:
+            roads = roads.to_crs(crs)
+            mask = geo.rasterize_roads(roads.geometry, ref, road_buffer_m)
+        yield img, mask, cid
+
+
+def _chip_id(stem: str) -> str:
+    """Best-effort shared id: the last 'chipN'/'imgN' or trailing token of a name."""
+    for tok in reversed(stem.replace("-", "_").split("_")):
+        if tok and (tok[0].isdigit() or tok.lower().startswith(("chip", "img"))):
+            return tok
+    return stem
+
+
+def _to_uint8_rgb(arr: np.ndarray) -> np.ndarray:
+    """Per-band percentile stretch of (possibly 16-bit) imagery to uint8 RGB."""
+    if arr.ndim == 2:
+        arr = np.repeat(arr[:, :, None], 3, axis=2)
+    if arr.shape[2] == 1:
+        arr = np.repeat(arr, 3, axis=2)
+    arr = arr[:, :, :3].astype(np.float32)
+    out = np.zeros_like(arr, dtype=np.uint8)
+    for b in range(3):
+        band = arr[:, :, b]
+        lo, hi = np.percentile(band, 2), np.percentile(band, 98)
+        if hi <= lo:
+            hi = lo + 1.0
+        out[:, :, b] = np.clip((band - lo) / (hi - lo) * 255.0, 0, 255).astype(np.uint8)
+    return out
+
+
+def ingest_source(
+    source: str,
+    cfg: DictConfig,
+    *,
+    terrain: str,
+    root: Path | None = None,
+    images: Path | None = None,
+    masks: Path | None = None,
+    gsd_m: float | None = None,
+    limit: int | None = None,
+    out_dir: Path | None = None,
+) -> pd.DataFrame:
+    """Dispatch to the right adapter and tile it into manifest rows."""
+    if source == "deepglobe":
+        pairs = iter_deepglobe(root)
+    elif source == "spacenet":
+        pairs = iter_spacenet(root, road_buffer_m=float(cfg.data.osm.road_buffer_m))
+    elif source in ("opensatmap", "folder"):
+        if images is None or masks is None:
+            raise ValueError(f"source={source} needs --images and --masks dirs")
+        pairs = iter_folder(images, masks)
+    else:
+        raise ValueError(f"unknown source: {source!r}")
+    return ingest_pairs(pairs, cfg, source=source, terrain=terrain,
+                        gsd_m=gsd_m, out_dir=out_dir, limit=limit)
