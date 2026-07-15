@@ -36,8 +36,11 @@ def test_evaluate_report_structure():
     overall = rep["overall"]
     assert _METRIC_KEYS <= set(overall)
     assert overall["n_tiles"] == 4
-    for k in _METRIC_KEYS:
+    # connectivity_ratio = n_comp(true)/n_comp(pred) is unbounded above (a blobby
+    # under-fragmented prediction gives >1), so only bound it below.
+    for k in _METRIC_KEYS - {"connectivity_ratio"}:
         assert 0.0 <= overall[k] <= 1.0
+    assert overall["connectivity_ratio"] >= 0.0
 
 
 def test_evaluate_per_terrain_breakdown():

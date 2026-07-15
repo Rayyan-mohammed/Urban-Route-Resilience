@@ -28,6 +28,7 @@ from ..data.synth_image import synthesize_image
 from ..graph.build import mask_to_graph
 from ..graph.metrics import graph_apls
 from ..models.baseline import build_model
+from ..models.tta import tta_predict
 from ..paths import METRICS, PROCESSED, ensure_dirs
 from ..utils import get_logger
 from .metrics import cldice_score, connectivity_ratio, occlusion_recall_counts
@@ -115,7 +116,11 @@ def _load_model(cfg: DictConfig, checkpoint: str | None, device: str, dry_run: b
 
 
 @torch.no_grad()
-def _predict(model, img_t: torch.Tensor, threshold: float, device: str) -> np.ndarray:
+def _predict(model, img_t: torch.Tensor, threshold: float, device: str, tta=None) -> np.ndarray:
+    if tta is not None:
+        probs = tta_predict(model, img_t, scales=tuple(tta["scales"]),
+                            flips=bool(tta["flips"]), device=device)  # (1,H,W)
+        return (probs > threshold).cpu().numpy()[0]
     logits = model(img_t.unsqueeze(0).to(device))
     return (torch.sigmoid(logits) > threshold).cpu().numpy()[0, 0]
 
@@ -128,6 +133,7 @@ def evaluate(
     dry_run: bool = False,
     max_tiles: int | None = None,
     compute_apls: bool = False,
+    use_tta: bool | None = None,
 ) -> dict:
     ensure_dirs()
     device = "cpu" if dry_run else _resolve_device(cfg)
@@ -135,6 +141,15 @@ def evaluate(
     tf = build_transforms(train=False)
     threshold = float(cfg.train.threshold)
     occ = cfg.data.occlusion
+
+    # Multi-scale + flip TTA (§7.1). CLI flag wins; else fall back to cfg.eval.tta.
+    ecfg = cfg.get("eval", {})
+    tta_on = ecfg.get("tta", False) if use_tta is None else use_tta
+    tta = None
+    if tta_on:
+        tta = {"scales": list(ecfg.get("tta_scales", [0.75, 1.0, 1.25])),
+               "flips": bool(ecfg.get("tta_flips", True))}
+        log.info("TTA enabled: scales=%s flips=%s", tta["scales"], tta["flips"])
 
     rows = read_manifest(PROCESSED / "manifest.csv")
     rows = rows[rows["split"] == split].reset_index(drop=True)
@@ -149,14 +164,14 @@ def evaluate(
 
     for idx, row in rows.iterrows():
         img, mask = _load_pair(row, idx)
-        clean_pred = _predict(model, tf(image=img, mask=mask)["image"].float(), threshold, device)
+        clean_pred = _predict(model, tf(image=img, mask=mask)["image"].float(), threshold, device, tta)
         # Deterministic, always-on occlusion for the occlusion-recall measurement.
         res = apply_occlusion(
             img, mask, types=tuple(occ.types), weights=list(occ.weights),
             coverage_range=tuple(occ.coverage_range), apply_prob=1.0,
             max_occluders=int(occ.max_occluders), seed=2000 + int(idx),
         )
-        occ_pred = _predict(model, tf(image=res.image, mask=mask)["image"].float(), threshold, device)
+        occ_pred = _predict(model, tf(image=res.image, mask=mask)["image"].float(), threshold, device, tta)
 
         for acc in (overall, per[row["terrain"]]):
             acc.add_clean(clean_pred, mask)
@@ -168,6 +183,7 @@ def evaluate(
         "split": split,
         "checkpoint": str(checkpoint) if checkpoint else None,
         "arch": f"{cfg.model.arch}/{cfg.model.encoder}",
+        "tta": tta is not None,
         "overall": overall.compute(),
         "per_terrain": {k: v.compute() for k, v in per.items()},
     }

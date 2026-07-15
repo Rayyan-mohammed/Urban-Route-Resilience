@@ -13,3 +13,9 @@ paths:
 
 # Terrain strata — generalisation is MEASURED across these, not claimed (§2.2, §11).
 terrains: [urban, suburban, forested, rural]
+
+# Inference / evaluation defaults.
+eval:
+  tta: false              # multi-scale + flip test-time augmentation (§7.1, §10)
+  tta_scales: [0.75, 1.0, 1.25]
+  tta_flips: true
