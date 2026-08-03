@@ -58,3 +58,86 @@ class BandHazard(Hazard):
 
     def impacted_nodes(self, g: nx.Graph) -> set:
         return {n for n, d in g.nodes(data=True) if self.lo <= d[self.axis] <= self.hi}
+
+
+class RasterHazard(Hazard):
+    """Real hazard grounded in a raster — a DEM or a flood-depth layer.
+
+    This is the production form of the interface the synthetic hazards above
+    stand in for: it samples the raster at each junction's world coordinate and
+    decides whether that junction is out of service.
+
+        # Flood-depth product: junctions under more than 0.3 m of water.
+        RasterHazard("flood_depth.tif", mode="depth", threshold=0.3)
+
+        # Bare DEM: junctions below the 812 m flood water level.
+        RasterHazard("dem.tif", mode="elevation", threshold=812.0)
+
+    Node coordinates are reprojected to the raster CRS when `node_crs` is given,
+    so the DEM does not have to share the imagery's projection. Nodes outside the
+    raster, or on nodata, are treated as unaffected — a hazard layer that does not
+    cover a junction is not evidence that the junction is flooded.
+
+    rasterio/pyproj are imported lazily so the resilience package keeps working
+    (synthetic hazards and all) on machines without the geospatial stack.
+    """
+
+    def __init__(
+        self,
+        raster_path,
+        *,
+        mode: str = "depth",
+        threshold: float = 0.0,
+        band: int = 1,
+        node_crs: str | None = None,
+    ):
+        import rasterio
+
+        if mode not in ("depth", "elevation"):
+            raise ValueError(f"mode must be 'depth' or 'elevation', got {mode!r}")
+        self.mode = mode
+        self.threshold = float(threshold)
+        self.raster_path = str(raster_path)
+
+        with rasterio.open(raster_path) as ds:
+            self.values = ds.read(band).astype("float64")
+            self.inv_transform = ~ds.transform
+            self.height, self.width = ds.height, ds.width
+            self.nodata = ds.nodata
+            self.raster_crs = str(ds.crs) if ds.crs else None
+
+        self._to_raster = None
+        if node_crs and self.raster_crs and str(node_crs) != self.raster_crs:
+            from pyproj import Transformer
+
+            self._to_raster = Transformer.from_crs(
+                str(node_crs), self.raster_crs, always_xy=True
+            ).transform
+
+    def sample(self, x: float, y: float) -> float | None:
+        """Raster value at a world coordinate, or None if outside / nodata."""
+        if self._to_raster is not None:
+            x, y = self._to_raster(x, y)
+        col, row = self.inv_transform * (x, y)
+        r, c = int(row), int(col)
+        if not (0 <= r < self.height and 0 <= c < self.width):
+            return None
+        v = float(self.values[r, c])
+        if self.nodata is not None and v == float(self.nodata):
+            return None
+        if v != v:                                   # NaN nodata
+            return None
+        return v
+
+    def _is_hit(self, v: float) -> bool:
+        # Depth: standing water deeper than the threshold closes the junction.
+        # Elevation: ground below the flood water level is inundated.
+        return v > self.threshold if self.mode == "depth" else v <= self.threshold
+
+    def impacted_nodes(self, g: nx.Graph) -> set:
+        out = set()
+        for n, d in g.nodes(data=True):
+            v = self.sample(d["x"], d["y"])
+            if v is not None and self._is_hit(v):
+                out.add(n)
+        return out

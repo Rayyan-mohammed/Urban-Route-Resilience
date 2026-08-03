@@ -32,6 +32,7 @@ from route_resilience.config import load_config
 from route_resilience.inference import load_model_from_checkpoint, predict_geotiff
 from route_resilience.paths import PREDICTIONS, REPORTS, ensure_dirs
 from route_resilience.pipeline import run_tile_pipeline
+from route_resilience.resilience.hazard import RasterHazard
 from route_resilience.utils import get_logger
 
 log = get_logger("predict")
@@ -63,6 +64,12 @@ def main() -> None:
     ap.add_argument("--pipeline", action="store_true",
                     help="run graph -> heal -> resilience on each predicted mask")
     ap.add_argument("--radius", type=float, default=50.0, help="sample hazard radius (m)")
+    ap.add_argument("--hazard-raster", default=None,
+                    help="real DEM / flood-depth raster to drive the hazard (with --pipeline)")
+    ap.add_argument("--hazard-mode", default="depth", choices=("depth", "elevation"),
+                    help="depth: flooded above threshold | elevation: below flood level")
+    ap.add_argument("--hazard-threshold", type=float, default=0.3,
+                    help="flood depth (m) or water-level elevation (m)")
     args = ap.parse_args()
 
     ensure_dirs()
@@ -105,7 +112,15 @@ def main() -> None:
         if not args.pipeline:
             continue
 
-        rep = run_tile_pipeline(info["mask_path"], cfg, hazard_radius_m=args.radius)
+        hazard = None
+        if args.hazard_raster:
+            hazard = RasterHazard(args.hazard_raster, mode=args.hazard_mode,
+                                  threshold=args.hazard_threshold, node_crs=info["crs"])
+            log.info("hazard: %s (%s > %.2f)", args.hazard_raster,
+                     args.hazard_mode, args.hazard_threshold)
+
+        rep = run_tile_pipeline(info["mask_path"], cfg,
+                                hazard_radius_m=args.radius, hazard=hazard)
         if rep.get("empty"):
             log.warning("empty graph for %s — nothing to route", img.name)
             continue
@@ -113,8 +128,10 @@ def main() -> None:
         gs, rs = rep["graph"], rep["resilience"]
         log.info("graph: %d nodes, %d edges, %d components, %.0f m",
                  gs["n_nodes"], gs["n_edges"], gs["n_components"], gs["total_length_m"])
-        log.info("flood r=%.0fm -> Resilience Index=%.2f (efficiency -%.0f%%)",
-                 args.radius, rs["resilience_index"], 100 * rs["efficiency_drop"])
+        hz = rep["sample_hazard"]
+        label = f"flood r={hz['radius_m']:.0f}m" if "radius_m" in hz else hz["type"]
+        log.info("%s -> Resilience Index=%.2f (efficiency -%.0f%%), %d junctions hit",
+                 label, rs["resilience_index"], 100 * rs["efficiency_drop"], rs["n_impacted"])
         out = REPORTS / f"{img.stem}_pred.json"
         out.write_text(json.dumps(rep, indent=2))
         log.info("saved report -> %s", out)

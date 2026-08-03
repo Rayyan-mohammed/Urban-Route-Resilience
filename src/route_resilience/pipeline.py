@@ -29,8 +29,14 @@ def run_tile_pipeline(
     heal: bool = True,
     hazard_radius_m: float = 50.0,
     top_k: int = 5,
+    hazard=None,
 ) -> dict:
-    """Run the full pixels->topology->resilience chain on one tile."""
+    """Run the full pixels->topology->resilience chain on one tile.
+
+    `hazard` accepts any `Hazard` (e.g. a `RasterHazard` over a real DEM/flood
+    product). When omitted, a synthetic radius flood is centred on the most
+    critical junction so the chain is demonstrable without a hazard layer.
+    """
     res = float(cfg.data.resolution_m)
     max_gap = float(cfg.graph.healing.max_gap_m)
     g, crs = load_tile_graph(mask_path, res, heal=heal, max_gap_m=max_gap)
@@ -44,21 +50,29 @@ def run_tile_pipeline(
         for n, v in crit
     ]
 
-    # Sample hazard: flood the single most critical junction.
-    top_node = crit[0][0]
-    hz = RadiusHazard(center=(g.nodes[top_node]["x"], g.nodes[top_node]["y"]),
-                      radius_m=hazard_radius_m)
-    resilience = resilience_report(g, hz)
+    if hazard is None:
+        # Sample hazard: flood the single most critical junction.
+        top_node = crit[0][0]
+        hazard = RadiusHazard(center=(g.nodes[top_node]["x"], g.nodes[top_node]["y"]),
+                              radius_m=hazard_radius_m)
+        hazard_info = {
+            "type": "RadiusHazard",
+            "center_lonlat": [g.nodes[top_node]["lon"], g.nodes[top_node]["lat"]],
+            "radius_m": hazard_radius_m,
+        }
+    else:
+        hazard_info = {"type": type(hazard).__name__}
+        for attr in ("raster_path", "mode", "threshold"):
+            if hasattr(hazard, attr):
+                hazard_info[attr] = getattr(hazard, attr)
+
+    resilience = resilience_report(g, hazard)
 
     return {
         "mask_path": str(mask_path),
         "crs": crs,
         "graph": graph_stats(g),
         "critical_nodes": critical,
-        "sample_hazard": {
-            "type": "RadiusHazard",
-            "center_lonlat": [g.nodes[top_node]["lon"], g.nodes[top_node]["lat"]],
-            "radius_m": hazard_radius_m,
-        },
+        "sample_hazard": hazard_info,
         "resilience": resilience,
     }

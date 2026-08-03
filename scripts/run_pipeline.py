@@ -33,6 +33,12 @@ def main() -> None:
     ap.add_argument("--radius", type=float, default=50.0, help="sample hazard radius (m)")
     ap.add_argument("--no-heal", action="store_true", help="skip graph healing")
     ap.add_argument("--save", action="store_true", help="write JSON report to artifacts/reports/")
+    ap.add_argument("--hazard-raster", default=None,
+                    help="real DEM / flood-depth raster to drive the hazard")
+    ap.add_argument("--hazard-mode", default="depth", choices=("depth", "elevation"),
+                    help="depth: flooded above threshold | elevation: below flood level")
+    ap.add_argument("--hazard-threshold", type=float, default=0.3,
+                    help="flood depth (m) or water-level elevation (m)")
     args = ap.parse_args()
 
     cfg = load_config("base.yaml", "data.yaml", "graph.yaml")
@@ -41,7 +47,20 @@ def main() -> None:
         man = read_manifest(PROCESSED / "manifest.csv").sort_values("road_frac", ascending=False)
         mask = man.iloc[0]["mask_path"]
 
-    rep = run_tile_pipeline(mask, cfg, heal=not args.no_heal, hazard_radius_m=args.radius)
+    hazard = None
+    if args.hazard_raster:
+        import rasterio
+
+        from route_resilience.resilience.hazard import RasterHazard
+        with rasterio.open(mask) as ds:
+            node_crs = str(ds.crs)
+        hazard = RasterHazard(args.hazard_raster, mode=args.hazard_mode,
+                              threshold=args.hazard_threshold, node_crs=node_crs)
+        log.info("hazard: %s (%s > %.2f)", args.hazard_raster,
+                 args.hazard_mode, args.hazard_threshold)
+
+    rep = run_tile_pipeline(mask, cfg, heal=not args.no_heal,
+                            hazard_radius_m=args.radius, hazard=hazard)
 
     if rep.get("empty"):
         log.warning("empty graph for %s", mask)
@@ -54,8 +73,11 @@ def main() -> None:
     log.info("top critical junction: lon=%.5f lat=%.5f (betweenness=%.3f)",
              rep["critical_nodes"][0]["lon"], rep["critical_nodes"][0]["lat"],
              rep["critical_nodes"][0]["betweenness"])
-    log.info("flood r=%.0fm -> Resilience Index=%.2f (efficiency -%.0f%%), %d junctions, %d comps after",
-             rep["sample_hazard"]["radius_m"], rs["resilience_index"],
+    hz = rep["sample_hazard"]
+    label = (f"flood r={hz['radius_m']:.0f}m" if "radius_m" in hz
+             else f"{hz['type']} ({hz.get('mode', '')} > {hz.get('threshold', '')})")
+    log.info("%s -> Resilience Index=%.2f (efficiency -%.0f%%), %d junctions, %d comps after",
+             label, rs["resilience_index"],
              100 * rs["efficiency_drop"], rs["n_impacted"], rs["components_after"])
 
     if args.save:
