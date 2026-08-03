@@ -84,8 +84,32 @@ python scripts/run_pipeline.py --save
 streamlit run src/route_resilience/dashboard/app.py
 ```
 
+### From real imagery
+
+With trained weights, go straight from satellite pixels to a resilience report —
+sliding-window inference (any image size, blended overlaps, optional TTA) writes a
+geo-referenced mask that the graph/twin chain consumes unchanged:
+
+```bash
+python scripts/predict.py --image-dir data/raw/cartosat \
+    --checkpoint artifacts/checkpoints/segformer_cldice_best.pth --tta --pipeline
+
+# Ground the hazard in a real DEM or flood-depth raster instead of a synthetic one
+python scripts/predict.py --image tile.tif --checkpoint <pth> --tta --pipeline \
+    --hazard-raster dem.tif --hazard-mode elevation --hazard-threshold 812
+
+# Imagery with no labels? Fetch OSM roads for each tile's own footprint
+python scripts/ingest_dataset.py --source cartosat --root data/raw/cartosat \
+    --terrain cartosat --append
+
+# The judge-facing ablation tables (3 and 4 need no trained weights)
+python scripts/ablations.py --all
+```
+
 > Architecture & finale plan: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 > Training on Colab/Kaggle (no local GPU needed): [`docs/TRAINING.md`](docs/TRAINING.md).
+> Datasets & ingest adapters: [`docs/DATASETS.md`](docs/DATASETS.md).
+> The 30-hour finale sequence: [`docs/FINALE_RUNBOOK.md`](docs/FINALE_RUNBOOK.md).
 
 > **No local GPU?** That's expected. Phase II–IV (graph, twin, dashboard) run on
 > CPU. Heavy training (Phase I) runs on Colab/Kaggle — see `docs/TRAINING.md`.

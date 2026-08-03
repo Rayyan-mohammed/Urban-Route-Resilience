@@ -26,13 +26,47 @@ deliberately excluded — finale only.
 | M9  | Dashboard backend                 | §7 P4   | ✅     | service.py: load/heal/reproject(UTM→WGS84)/flood/reroute/build_map. 6 tests pass. |
 | M10 | Dashboard frontend                | §15 P4  | ✅     | Streamlit + folium/Leaflet on OSM basemap; click-to-flood, radius slider, live RI + recomputed betweenness + reroute. Boots clean (headless smoke). |
 | M11 | Docs / tests / demo assets        | §12 P7-8| ✅     | end-to-end pipeline.py + CLI; ARCHITECTURE.md; README demo embed (4 assets); Colab notebook; evaluate() orchestrator tests. 68 tests pass. |
+| M12 | Finale integration surface        | §7, §12 | ✅     | **Inference on real imagery** (`inference/predict.py` + `scripts/predict.py`): sliding window, Hann-blended overlaps, TTA, percentile stretch, CRS/transform preserved. **Cartosat OSM auto-labelling** (`--source cartosat`) — verified live: 230 OSM segments → 9 labelled tiles. **RasterHazard** (real DEM/flood). **Ablation tables** (`scripts/ablations.py`). 118 tests pass. |
 
 ---
 
 ## Currently building
-- **M0–M11 ALL DONE and verified.** 76 tests pass, ruff clean. Full pre-finale
-  build complete: extraction → graph → heal → twin → dashboard, plus end-to-end
-  pipeline, docs, Colab notebook, demo assets. **Nothing left but the finale.**
+- **M0–M12 DONE and verified.** 118 tests pass, ruff clean. The finale surface is
+  now code-complete: unlabelled imagery → OSM labels → fine-tune → predict → graph
+  → heal → real-DEM hazard → twin → dashboard. Runbook: `docs/FINALE_RUNBOOK.md`.
+
+### ⚠️ The one thing that is NOT done: real trained weights
+All three checkpoints in `artifacts/checkpoints/` are **1-epoch CPU dry-runs**, not
+models. Their metrics prove it — precision ≈ 0.10 with recall ≈ 1.0 means "predict
+road everywhere"; D-LinkNet's are literally all zeros:
+
+| checkpoint | epoch | IoU | precision | recall |
+|---|---|---|---|---|
+| baseline_unet | 1 | 0.099 | 0.099 | 0.98 |
+| dlinknet | 1 | 0.000 | 0.000 | 0.00 |
+| segformer_cldice | 1 | 0.097 | 0.097 | 1.00 |
+
+Local training cannot fix this: `image_path` is **0/730** in the manifest, so the
+Dataset falls back to `synth_image.py` — pseudo-images derived from the mask, i.e.
+the model reads the answer off its own input. **Real numbers need the Kaggle
+DeepGlobe run** (`notebooks/train_kaggle.ipynb`, `USE_REAL_DATA=True`). Roadmap
+§13.1 wanted weights cached by 1 Aug; that is the live schedule slip.
+
+### Ablations — 2 of 4 already have real numbers (no GPU needed)
+`python scripts/ablations.py --all` → `artifacts/reports/ablations.md`. Measured on
+40 held-out tiles:
+- **Healing:** components/tile 2.23 → 1.27 (−42.7%); largest-component fraction
+  0.901 → 0.970 (+7.7%); 0.9 bridges/tile.
+- **Dynamic vs static betweenness:** RI 0.569 → 0.450 — recalculated attack does
+  **11.8 pp more damage**, worse on 33/40 tiles. Directly supports the §8 USP.
+- Ablations 1 & 2 (Dice vs +clDice, ±occlusion) are blocked on the GPU run.
+
+### Fixed: Resilience Index could exceed 1
+`global_efficiency` normalised by the *surviving* node count, so ablating a sparse
+suburb shrank the denominator faster than the numerator — a measured case scored
+**RI = 1.56**, i.e. "the flood improved the city". Both sides are now normalised
+over the pre-hazard node set (`n_universe`); that case now scores 0.99. Regression
+test in `tests/test_resilience.py`.
 - **2026-07-15 — closed the two roadmap §12 P3/P4 code gaps:**
   D-LinkNet baseline (`models/dlinknet.py`, `configs/model_dlinknet.yaml` +
   `train_dlinknet.yaml`, `arch: DLinkNet` dispatched by the factory) and
@@ -41,11 +75,15 @@ deliberately excluded — finale only.
   `python scripts/train.py --config base.yaml data.yaml model_dlinknet.yaml train.yaml train_dlinknet.yaml`.
   Evaluate with TTA: add `--tta` to `scripts/evaluate.py`.
   Still pending (needs GPU, not code): the actual Colab training runs → real weights + metric tables.
-- Remaining = **finale only**: Cartosat-3 fine-tuning + feed predicted mask into
-  `pipeline.run_tile_pipeline` + wire a real DEM hazard. Surface documented in
-  docs/ARCHITECTURE.md.
-- Hazard layer is synthetic + pluggable (Node/Radius/Band); real DEM/flood raster
-  drops into the same `Hazard.impacted_nodes` interface later.
+- **2026-08-03 — closed the whole finale integration surface (M12).** All three
+  steps ARCHITECTURE.md listed as finale work are now code, tested end to end:
+  imagery→mask inference, Cartosat OSM auto-labelling, real DEM/flood hazard.
+  Remaining finale work is running commands, not writing them — see
+  `docs/FINALE_RUNBOOK.md`.
+- Hazard layer: synthetic generators (Node/Radius/Band) **plus `RasterHazard`** for
+  a real DEM or flood-depth product (`--hazard-raster`, depth or elevation mode).
+- Predict from imagery: `python scripts/predict.py --image-dir <dir> --checkpoint <pth> --tta --pipeline`
+- Ablation tables: `python scripts/ablations.py --all` → `artifacts/reports/ablations.md`
 - Run pipeline: `python scripts/run_pipeline.py --save`
 - Run dashboard: `streamlit run src/route_resilience/dashboard/app.py`
 - Train (Colab GPU): `notebooks/train_colab.ipynb`
@@ -58,14 +96,23 @@ deliberately excluded — finale only.
 - Miniforge at `C:\Users\HP\miniforge3`; env `route-resilience` (Python 3.11).
 - Run tools via that env's python; GDAL_DATA/PROJ_LIB are set on `conda activate`.
 
-## Open blockers / risks (live)
-- ⚠️ **Finale rules unconfirmed** (roadmap §9.5): are pre-trained weights allowed
-  on-site? Confirm at 21 Jul induction. Entire "train-before-finale" strategy
-  depends on it.
-- ⚠️ **No local GPU**: M3/M4 training must run on Colab/Kaggle. Keep all data,
-  graph, twin, dashboard code CPU-runnable so local dev never blocks.
-- ⬜ **Hazard layer source** (M8): need a concrete flood/DEM source for an Indian
-  demo city. To be resolved before M8.
+## Open blockers / risks (live — 3 days to the finale)
+- 🔴 **No real weights yet. This is the critical path.** Run
+  `notebooks/train_kaggle.ipynb` with `USE_REAL_DATA=True` (FAST=True first to
+  de-risk, then the full run) and download the three `*.pth` into
+  `artifacts/checkpoints/`. Everything else is ready and waiting on this.
+- ⚠️ **Finale rules still unconfirmed** (roadmap §9.5): are pre-trained weights
+  allowed on-site? The 21 Jul induction has passed — if this was answered, record
+  it here. If weights are *not* allowed, the train-before-finale strategy changes.
+- ⚠️ **Venue may be offline.** `--source cartosat` needs internet for OSMnx.
+  Pre-cache OSM masks for the demo city before travelling (runbook item 2).
+- ⚠️ **No local GPU**: training must run on Colab/Kaggle. All other code is
+  CPU-runnable so local dev never blocks.
+- ⬜ **No fallback demo video** (roadmap Day 8 / 5 Aug). §9.5 rates "demo breaks
+  live" Med/High; the video is the mitigation.
+- ⬜ **Hazard raster source**: `RasterHazard` is built and tested, but no actual
+  DEM/flood product for an Indian demo city is attached yet. Bhuvan/Bhukosh or
+  SRTM/Copernicus DEM would all work.
 
 ## Decisions log
 - **2026-06-28** Env: Conda/Mamba (conda-forge geospatial). Delivery: files written
