@@ -57,6 +57,28 @@ def _tile_starts(size: int, tile: int, step: int) -> list[int]:
     return starts
 
 
+def _tileref_real(base_id: str, r0: int, c0: int, tile: int, transform, crs: str) -> TileRef:
+    """TileRef on the source's OWN transform/CRS, for genuinely geo-referenced imagery.
+
+    Cartosat-3 (and any GeoTIFF with real geodesy) must keep its true coordinates
+    so the extracted graph lands on a real basemap in the dashboard.
+    """
+    from rasterio.transform import array_bounds
+    from rasterio.windows import Window
+    from rasterio.windows import transform as window_transform
+
+    win_tf = window_transform(Window(c0, r0, tile, tile), transform)
+    w, s, e, n = array_bounds(tile, tile, win_tf)   # (west, south, east, north)
+    return TileRef(
+        tile_id=f"{base_id}_r{r0:04d}_c{c0:04d}",
+        transform=win_tf,
+        width=tile,
+        height=tile,
+        crs=str(crs),
+        bounds=(w, s, e, n),
+    )
+
+
 def _tileref(base_id: str, r0: int, c0: int, tile: int, gsd: float, img_h: int) -> TileRef:
     """Synthetic north-up TileRef for a pixel window (top-left at row r0, col c0)."""
     # World origin: top-left of the whole source at (0, img_h*gsd); north-up.
@@ -89,6 +111,11 @@ def ingest_pairs(
     - image: uint8 (H,W,3); mask: any (H,W) where >0 means road.
     - Writes `data/processed/images/<tile>.tif` (3-band) + `masks/<tile>.tif`.
     - Keeps only tiles with road fraction >= cfg.data.min_road_frac.
+
+    Adapters may yield a 4th element, `(transform, crs)`, for imagery that carries
+    real geodesy (Cartosat-3, SpaceNet). Those tiles keep their true coordinates
+    instead of the synthetic north-up placeholder grid, so the graph they produce
+    lands on a real basemap.
     """
     d = cfg.data
     tile = int(d.tile_size)
@@ -100,10 +127,13 @@ def ingest_pairs(
 
     rows: list[dict] = []
     n_src = 0
-    for image, mask, base_id in pairs:
+    for pair in pairs:
         if limit is not None and n_src >= limit:
             break
         n_src += 1
+        # 3-tuple = synthetic grid; 4-tuple carries the source's real (transform, crs).
+        image, mask, base_id = pair[0], pair[1], pair[2]
+        georef = pair[3] if len(pair) > 3 else None
         if image.ndim != 3 or image.shape[2] != 3:
             log.warning("skip %s: image not (H,W,3), got %s", base_id, image.shape)
             continue
@@ -118,7 +148,11 @@ def ingest_pairs(
                 road_frac = float(m.mean())
                 if road_frac < float(d.min_road_frac):
                     continue
-                ref = _tileref(f"{source}_{base_id}", r0, c0, tile, gsd, h)
+                if georef is not None:
+                    ref = _tileref_real(f"{source}_{base_id}", r0, c0, tile,
+                                        georef[0], georef[1])
+                else:
+                    ref = _tileref(f"{source}_{base_id}", r0, c0, tile, gsd, h)
                 img_t = image[r0 : r0 + tile, c0 : c0 + tile].astype(np.uint8)
                 img_path = img_dir / f"{ref.tile_id}.tif"
                 mask_path = mask_dir / f"{ref.tile_id}.tif"
@@ -129,7 +163,10 @@ def ingest_pairs(
                     "mask_path": str(mask_path), "image_path": str(img_path),
                     "crs": ref.crs, "west": ref.bounds[0], "south": ref.bounds[1],
                     "east": ref.bounds[2], "north": ref.bounds[3],
-                    "width": tile, "height": tile, "resolution_m": gsd,
+                    # Real pixel size when the source is geo-referenced; the
+                    # synthetic transform carries `gsd` here, so this covers both.
+                    "width": tile, "height": tile,
+                    "resolution_m": abs(float(ref.transform.a)),
                     "road_frac": road_frac, "split": "",
                 })
     log.info("%s: %d source images -> %d road-dense tiles", source, n_src, len(rows))
@@ -221,6 +258,79 @@ def iter_spacenet(root: Path, *, road_buffer_m: float = 2.0) -> Iterator[tuple[n
         yield img, mask, cid
 
 
+def _footprint_radius_m(bounds, crs) -> float:
+    """Half-diagonal of a footprint in metres, for any CRS."""
+    west, south, east, north = bounds
+    if getattr(crs, "is_geographic", False):
+        import math
+
+        mid_lat = math.radians((south + north) / 2.0)
+        w_m = abs(east - west) * 111_320.0 * max(0.1, math.cos(mid_lat))
+        h_m = abs(north - south) * 110_540.0
+    else:
+        w_m, h_m = abs(east - west), abs(north - south)
+    return 0.5 * (w_m**2 + h_m**2) ** 0.5
+
+
+def iter_geotiff_osm(
+    root: Path,
+    *,
+    road_buffer_m: float = 2.0,
+    network_type: str = "drive",
+) -> Iterator[tuple[np.ndarray, np.ndarray, str, tuple]]:
+    """Geo-referenced imagery + OSM road labels fetched for each image's footprint.
+
+    This is the finale adapter. Cartosat-3 tiles arrive as GeoTIFFs with **no
+    labels**, so there is nothing to fine-tune against. Here we read each image's
+    real footprint, pull the OSM drivable network covering it, reproject to the
+    image CRS and burn it onto the image's own pixel grid — giving aligned
+    (imagery, label) pairs with zero manual annotation.
+
+    Needs internet (OSMnx). At a venue without it, pre-cache the masks before the
+    event and use `--source folder --images ... --masks ...` instead.
+    """
+    import rasterio
+    from rasterio.warp import transform_bounds
+
+    from .osm import road_edges_for_place
+
+    root = Path(root)
+    images = sorted(p for p in root.rglob("*") if p.suffix.lower() in (".tif", ".tiff"))
+    if not images:
+        log.warning("geotiff-osm: no GeoTIFFs under %s", root)
+
+    for img_path in images:
+        with rasterio.open(img_path) as ds:
+            if ds.crs is None:
+                log.warning("skip %s: no CRS — cannot locate it on OSM", img_path.name)
+                continue
+            bands = min(3, ds.count)
+            arr = ds.read(list(range(1, bands + 1))).transpose(1, 2, 0)
+            img = _to_uint8_rgb(arr)
+            transform, crs, bounds = ds.transform, ds.crs, tuple(ds.bounds)
+            ref = TileRef(img_path.stem, transform, ds.width, ds.height, str(crs), bounds)
+
+        # OSMnx wants a (lat, lon) centre + a radius that covers the whole footprint.
+        west, south, east, north = transform_bounds(crs, "EPSG:4326", *bounds)
+        centre = ((south + north) / 2.0, (west + east) / 2.0)
+        dist_m = int(_footprint_radius_m(bounds, crs) * 1.15) + 100   # margin
+
+        try:
+            edges, _ = road_edges_for_place(
+                point=centre, dist_m=dist_m, network_type=network_type)
+        except Exception as exc:                      # offline / no roads / geocode fail
+            log.warning("skip %s: OSM fetch failed (%s)", img_path.name, exc)
+            continue
+        if edges is None or edges.empty:
+            log.warning("skip %s: OSM returned no roads for its footprint", img_path.name)
+            continue
+
+        mask = geo.rasterize_roads(edges.to_crs(crs).geometry, ref, road_buffer_m)
+        log.info("%s: %d OSM segments -> road_frac=%.4f",
+                 img_path.name, len(edges), float((mask > 0).mean()))
+        yield img, mask, img_path.stem, (transform, str(crs))
+
+
 def _chip_id(stem: str) -> str:
     """Best-effort shared id: the last 'chipN'/'imgN' or trailing token of a name."""
     for tok in reversed(stem.replace("-", "_").split("_")):
@@ -267,6 +377,12 @@ def ingest_source(
         if images is None or masks is None:
             raise ValueError(f"source={source} needs --images and --masks dirs")
         pairs = iter_folder(images, masks)
+    elif source in ("geotiff-osm", "cartosat"):
+        pairs = iter_geotiff_osm(
+            root,
+            road_buffer_m=float(cfg.data.osm.road_buffer_m),
+            network_type=str(cfg.data.osm.network_type),
+        )
     else:
         raise ValueError(f"unknown source: {source!r}")
     return ingest_pairs(pairs, cfg, source=source, terrain=terrain,

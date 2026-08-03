@@ -14,6 +14,11 @@ the synthetic placeholder. Supports the roadmap's datasets:
     python scripts/ingest_dataset.py --source opensatmap \
         --images /path/imgs --masks /path/masks --terrain opensatmap
 
+    # FINALE: Cartosat-3 GeoTIFFs with NO labels — OSM roads are fetched for each
+    # image's own footprint and burned onto its pixel grid (needs internet):
+    python scripts/ingest_dataset.py --source cartosat \
+        --root data/raw/cartosat --terrain cartosat --append
+
 Add `--append` to MERGE into the existing manifest (e.g. keep the OSM tiles and
 add DeepGlobe on top); omit it to start a fresh manifest from just this source.
 Re-runs the terrain-stratified split every time so `split` stays valid.
@@ -37,8 +42,10 @@ log = get_logger("ingest_dataset")
 def main() -> None:
     ap = argparse.ArgumentParser(description="Ingest a real road dataset into the manifest.")
     ap.add_argument("--source", required=True,
-                    choices=["deepglobe", "spacenet", "opensatmap", "folder"])
-    ap.add_argument("--root", default=None, help="dataset root (deepglobe/spacenet)")
+                    choices=["deepglobe", "spacenet", "opensatmap", "folder",
+                             "geotiff-osm", "cartosat"])
+    ap.add_argument("--root", default=None,
+                    help="dataset root (deepglobe/spacenet/geotiff-osm)")
     ap.add_argument("--images", default=None, help="image dir (opensatmap/folder)")
     ap.add_argument("--masks", default=None, help="mask dir (opensatmap/folder)")
     ap.add_argument("--terrain", default=None, help="stratum label (default: source name)")

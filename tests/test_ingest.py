@@ -97,3 +97,61 @@ def test_iter_folder_matches_by_stem(tmp_path):
     Image.fromarray(img).save(imgs / "orphan.png")   # no matching mask -> skipped
     pairs = list(ingest.iter_folder(imgs, masks))
     assert len(pairs) == 1 and pairs[0][2] == "tile1"
+
+
+# ------------------- geo-referenced ingest (finale / Cartosat) -------------------
+def test_footprint_radius_metres_for_projected_crs():
+    import rasterio
+
+    crs = rasterio.crs.CRS.from_epsg(32643)          # UTM 43N, metres
+    # 300 m x 400 m footprint -> half-diagonal = 250 m
+    r = ingest._footprint_radius_m((0.0, 0.0, 300.0, 400.0), crs)
+    assert r == pytest.approx(250.0)
+
+
+def test_footprint_radius_metres_for_geographic_crs():
+    import rasterio
+
+    crs = rasterio.crs.CRS.from_epsg(4326)           # degrees
+    r = ingest._footprint_radius_m((77.6, 12.9, 77.61, 12.91), crs)
+    assert 500.0 < r < 1200.0                        # ~1 km box near Bengaluru
+
+
+def test_georeferenced_pairs_keep_their_real_crs_and_transform(tmp_path):
+    """Cartosat tiles must keep true coordinates, not the placeholder grid."""
+    import rasterio
+    from rasterio.transform import from_origin
+
+    cfg = _cfg(tile=64)
+    img, mask = _road_image_mask(128, 128)
+    transform = from_origin(785000.0, 1437000.0, 0.5, 0.5)
+    df = ingest.ingest_pairs(
+        [(img, mask, "cart0", (transform, "EPSG:32643"))], cfg,
+        source="cartosat", terrain="cartosat", out_dir=tmp_path,
+    )
+
+    assert len(df) >= 2
+    assert (df["crs"] == "EPSG:32643").all()
+    assert df["resolution_m"].iloc[0] == pytest.approx(0.5)
+    # Tile origins must sit inside the real source footprint, not at (0,0).
+    assert df["west"].min() >= 785000.0
+    assert df["north"].max() <= 1437000.0
+
+    with rasterio.open(df["image_path"].iloc[0]) as ds:
+        assert str(ds.crs) == "EPSG:32643"
+        assert ds.transform.c >= 785000.0            # real easting, not placeholder
+
+
+def test_synthetic_and_georeferenced_pairs_can_mix(tmp_path):
+    """3-tuples (no geodesy) and 4-tuples (real geodesy) in one ingest run."""
+    from rasterio.transform import from_origin
+
+    cfg = _cfg(tile=64)
+    img, mask = _road_image_mask(128, 128)
+    df = ingest.ingest_pairs(
+        [(img, mask, "plain"),
+         (img, mask, "geo", (from_origin(785000.0, 1437000.0, 0.5, 0.5), "EPSG:32643"))],
+        cfg, source="folder", terrain="mixed", gsd_m=0.5, out_dir=tmp_path,
+    )
+    assert df["tile_id"].str.contains("plain").any()
+    assert df["tile_id"].str.contains("geo").any()
