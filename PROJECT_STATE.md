@@ -72,6 +72,14 @@ deliberately excluded — finale only.
   directly. Local: CPU-only → train on cloud. Python 3.11. Config: OmegaConf.
   Package layout: `src/` installable.
 
-## Datasets to acquire (before M1/M3)
-- [ ] SpaceNet Roads (APLS GT) · [ ] DeepGlobe Road Extraction · [ ] OpenSatMap
-- [ ] A demo city OSM extract via OSMnx (e.g. Bengaluru — named in the brief)
+## Datasets (roadmap §3.2)
+Ingest adapters are BUILT (`data/ingest.py` + `scripts/ingest_dataset.py`); they tile
+real image+mask pairs into the manifest with a populated `image_path`, so training
+uses real pixels instead of `synth_image.py`. See `configs/datasets.yaml` + docs/DATASETS.md.
+- [x] **OSM via OSMnx** — 730 mask tiles, 4 Bengaluru terrains (masks only, no imagery)
+- [x] **DeepGlobe** — adapter + wired live in `notebooks/train_kaggle.ipynb` (Kaggle dataset)
+- [x] **SpaceNet Roads** — adapter built (GeoTIFF + GeoJSON → rasterised labels); needs the
+      AWS (requester-pays) download attached, then `ingest_dataset.py --source spacenet --append`
+- [x] **OpenSatMap** — covered by the generic image-dir/mask-dir adapter; attach + `--append`
+- ⚠️ Only DeepGlobe is actually *runnable* out of the box (it's a one-click Kaggle dataset).
+  SpaceNet/OpenSatMap adapters are untested against real data — no download available locally.
