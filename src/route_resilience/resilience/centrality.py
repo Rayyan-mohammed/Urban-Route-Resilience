@@ -36,20 +36,33 @@ def critical_nodes(g: nx.Graph, top: int = 10, **kw):
 
 
 def global_efficiency(
-    g: nx.Graph, weight: str = "length", sample_k: int | None = None, seed: int = 42
+    g: nx.Graph,
+    weight: str = "length",
+    sample_k: int | None = None,
+    seed: int = 42,
+    n_universe: int | None = None,
 ) -> float:
     """Length-weighted Latora-Marchiori global efficiency.
 
     sample_k samples that many source nodes for large graphs (single-source
     Dijkstra each); None = exact over all sources.
+
+    `n_universe` pins the pair-count denominator to a node set LARGER than the
+    graph itself — the fixed-universe convention used for hazard ablation. When a
+    flood removes junctions, those junctions must stay in the denominator as
+    permanently unreachable; otherwise removing poorly-connected nodes *raises*
+    measured efficiency (a smaller, tighter network scores better) and the
+    Resilience Index can exceed 1, i.e. "the flood improved the city". Defaults to
+    the graph's own node count, which is the standard single-network definition.
     """
     nodes = list(g.nodes())
-    n = len(nodes)
-    if n < 2:
+    m = len(nodes)
+    n = int(n_universe) if n_universe is not None else m
+    if n < 2 or m < 1:
         return 0.0
-    if sample_k and sample_k < n:
+    if sample_k and sample_k < m:
         rng = np.random.default_rng(seed)
-        sources = [nodes[i] for i in rng.choice(n, sample_k, replace=False)]
+        sources = [nodes[i] for i in rng.choice(m, sample_k, replace=False)]
     else:
         sources = nodes
 
@@ -58,5 +71,9 @@ def global_efficiency(
         for t, d in nx.single_source_dijkstra_path_length(g, s, weight=weight).items():
             if t != s and d > 0:
                 total += 1.0 / d
-    denom = len(sources) * (n - 1)  # unreachable pairs counted here -> penalised
-    return total / denom if denom else 0.0
+    # Scale the sampled source rows up to all m surviving sources, then normalise
+    # over the full universe of n(n-1) ordered pairs. Unreachable and removed
+    # pairs contribute 0 to the numerator but remain in the denominator.
+    if not sources:
+        return 0.0
+    return (m / len(sources)) * total / (n * (n - 1))

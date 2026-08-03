@@ -35,9 +35,12 @@ def resilience_report(
 ) -> dict:
     """Quantify how much mobility a hazard destroys."""
     impacted = set(hazard.impacted_nodes(g))
+    n0 = g.number_of_nodes()
     e0 = global_efficiency(g, weight=weight, sample_k=sample_k)
     g2 = ablate(g, impacted)
-    e1 = global_efficiency(g2, weight=weight, sample_k=sample_k)
+    # Both efficiencies are normalised over the PRE-hazard node set, so flooding
+    # can only ever lower the score (see global_efficiency's n_universe note).
+    e1 = global_efficiency(g2, weight=weight, sample_k=sample_k, n_universe=n0)
     ri = (e1 / e0) if e0 > 0 else 0.0
     return {
         "n_nodes": g.number_of_nodes(),

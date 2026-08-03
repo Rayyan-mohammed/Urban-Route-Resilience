@@ -101,6 +101,34 @@ def test_resilience_full_grid_vs_severe_hazard():
     assert severe["resilience_index"] < mild["resilience_index"]
 
 
+def test_removing_peripheral_nodes_never_raises_the_index():
+    """Regression: the index must not exceed 1 ("the flood improved the city").
+
+    Efficiency normalised over the SURVIVING nodes rewards amputating a sparse,
+    far-flung suburb — the denominator shrinks faster than the numerator. Both
+    sides must be normalised over the pre-hazard node set instead.
+    """
+    g = _grid(4)                                   # dense core, unit-length edges
+    tail = [("t", i) for i in range(4)]            # long straggly limb off a corner
+    prev = (0, 0)
+    for t in tail:
+        g.add_node(t, x=99.0, y=float(len(t)))
+        g.add_edge(prev, t, length=50.0, weight=50.0)
+        prev = t
+
+    rep = resilience_report(g, NodeHazard(tail))
+    assert rep["n_impacted"] == 4
+    assert rep["resilience_index"] <= 1.0
+    assert rep["efficiency_drop"] >= 0.0           # damage is never negative
+
+
+def test_index_is_zero_when_everything_floods():
+    g = _grid(3)
+    rep = resilience_report(g, NodeHazard(list(g.nodes())))
+    assert rep["resilience_index"] == 0.0
+    assert rep["n_impacted"] == 9
+
+
 def test_reroute_cost_disconnect_is_inf():
     g = _line(5)
     r = reroute_cost(g, 0, 4, ablated_nodes=[2])  # severs the only path
