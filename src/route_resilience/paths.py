@@ -28,6 +28,8 @@ ARTIFACTS = ROOT / "artifacts"
 CHECKPOINTS = ARTIFACTS / "checkpoints"
 METRICS = ARTIFACTS / "metrics"
 GRAPHS = ARTIFACTS / "graphs"
+PREDICTIONS = ARTIFACTS / "predictions"
+REPORTS = ARTIFACTS / "reports"
 
 ASSETS = ROOT / "assets"
 CONFIGS = ROOT / "configs"
@@ -35,5 +37,6 @@ CONFIGS = ROOT / "configs"
 
 def ensure_dirs() -> None:
     """Create all standard directories if missing (safe to call repeatedly)."""
-    for p in (RAW, INTERIM, PROCESSED, CHECKPOINTS, METRICS, GRAPHS, ASSETS):
+    for p in (RAW, INTERIM, PROCESSED, CHECKPOINTS, METRICS, GRAPHS,
+              PREDICTIONS, REPORTS, ASSETS):
         p.mkdir(parents=True, exist_ok=True)
