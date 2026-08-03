@@ -191,7 +191,9 @@ def ablation_betweenness(cfg, *, limit: int, split: str | None, k: int) -> dict:
         "resilience_index_static": s,
         "resilience_index_dynamic": d,
         "extra_damage_pct": 100.0 * (s - d),
-        "dynamic_worse_on_tiles": int(sum(1 for a, b in zip(static_ri, dynamic_ri) if b < a)),
+        "dynamic_worse_on_tiles": int(
+            sum(1 for a, b in zip(static_ri, dynamic_ri, strict=True) if b < a)
+        ),
     }
 
 
