@@ -3,8 +3,14 @@
 > Single running ledger. Updated at the end of every milestone. The roadmap
 > (`roadmap.md`) is the spec; this file tracks execution against it.
 
-**Phase:** Implementation (1 Jul → 21 Jul induction). Cartosat-3 fine-tuning is
-deliberately excluded — finale only.
+**Phase:** Not shortlisted for the BAH 2026 finale, so there is **no Cartosat-3
+data and no 30-hour finale**. The project continues as a standalone portfolio
+build: train on open real-imagery datasets, produce honest metrics and ablations,
+and demo the full extraction → graph → twin → dashboard chain.
+
+Cartosat-specific code (`--source cartosat` / `geotiff-osm`) is kept — it is a
+generic "auto-label any geo-referenced imagery from OSM" adapter, useful beyond
+the finale.
 
 **Legend:** ✅ done · 🔨 in progress · ⬜ not started · ⚠️ blocker/risk
 
@@ -87,46 +93,59 @@ test in `tests/test_resilience.py`.
 - Run pipeline: `python scripts/run_pipeline.py --save`
 - Run dashboard: `streamlit run src/route_resilience/dashboard/app.py`
 - Train (Colab GPU): `notebooks/train_colab.ipynb`
-- Pending GPU (batch later on Colab): full baseline + SegFormer+clDice runs, then
-  `python scripts/evaluate.py --checkpoint <baseline> --compare <segformer> --apls` for the money table.
-  - baseline:  `python scripts/train.py`
-  - segformer: `python scripts/train.py --config base.yaml data.yaml model_segformer.yaml train.yaml train_segformer.yaml`
+- **Train (Kaggle GPU): `notebooks/train_kaggle.ipynb`** — attach both datasets,
+  Save Version → Save & Run All. Trains U-Net + D-LinkNet + SegFormer/clDice on the
+  combined manifest, evaluates with `--apls --tta`, writes the ablation tables, and
+  collects weights + results into `/kaggle/working/`.
 
 ## Environment (installed 2026-06-29)
 - Miniforge at `C:\Users\HP\miniforge3`; env `route-resilience` (Python 3.11).
 - Run tools via that env's python; GDAL_DATA/PROJ_LIB are set on `conda activate`.
 
-## Open blockers / risks (live — 3 days to the finale)
-- 🔴 **No real weights yet. This is the critical path.** Run
-  `notebooks/train_kaggle.ipynb` with `USE_REAL_DATA=True` (FAST=True first to
-  de-risk, then the full run) and download the three `*.pth` into
-  `artifacts/checkpoints/`. Everything else is ready and waiting on this.
-- ⚠️ **Finale rules still unconfirmed** (roadmap §9.5): are pre-trained weights
-  allowed on-site? The 21 Jul induction has passed — if this was answered, record
-  it here. If weights are *not* allowed, the train-before-finale strategy changes.
-- ⚠️ **Venue may be offline.** `--source cartosat` needs internet for OSMnx.
-  Pre-cache OSM masks for the demo city before travelling (runbook item 2).
-- ⚠️ **No local GPU**: training must run on Colab/Kaggle. All other code is
+## Open blockers / risks (live)
+- 🔴 **No real weights yet. This is the only thing on the critical path.** Run
+  `notebooks/train_kaggle.ipynb` (attach BOTH Kaggle datasets, `FAST=True` first to
+  de-risk, then `FAST=False`), then download the three `*.pth` into
+  `artifacts/checkpoints/` and the `results/` folder into `artifacts/`.
+  Everything else is built and waiting on this.
+- ⚠️ **No local GPU**: training must run on Kaggle/Colab. All other code is
   CPU-runnable so local dev never blocks.
-- ⬜ **No fallback demo video** (roadmap Day 8 / 5 Aug). §9.5 rates "demo breaks
-  live" Med/High; the video is the mitigation.
 - ⬜ **Hazard raster source**: `RasterHazard` is built and tested, but no actual
-  DEM/flood product for an Indian demo city is attached yet. Bhuvan/Bhukosh or
-  SRTM/Copernicus DEM would all work.
+  DEM/flood product is attached yet. SRTM or Copernicus DEM (both free) would work
+  for whichever city ends up in the demo.
+- ⬜ **No demo video** — still worth recording once real weights land; it is the
+  artifact that survives when a live demo breaks.
+- ℹ️ Finale-only risks (venue GPU, offline venue, pre-trained-weights rules) are
+  **retired** — not shortlisted, so they no longer apply.
 
 ## Decisions log
 - **2026-06-28** Env: Conda/Mamba (conda-forge geospatial). Delivery: files written
   directly. Local: CPU-only → train on cloud. Python 3.11. Config: OmegaConf.
   Package layout: `src/` installable.
 
-## Datasets (roadmap §3.2)
-Ingest adapters are BUILT (`data/ingest.py` + `scripts/ingest_dataset.py`); they tile
-real image+mask pairs into the manifest with a populated `image_path`, so training
-uses real pixels instead of `synth_image.py`. See `configs/datasets.yaml` + docs/DATASETS.md.
-- [x] **OSM via OSMnx** — 730 mask tiles, 4 Bengaluru terrains (masks only, no imagery)
-- [x] **DeepGlobe** — adapter + wired live in `notebooks/train_kaggle.ipynb` (Kaggle dataset)
-- [x] **SpaceNet Roads** — adapter built (GeoTIFF + GeoJSON → rasterised labels); needs the
-      AWS (requester-pays) download attached, then `ingest_dataset.py --source spacenet --append`
-- [x] **OpenSatMap** — covered by the generic image-dir/mask-dir adapter; attach + `--append`
-- ⚠️ Only DeepGlobe is actually *runnable* out of the box (it's a one-click Kaggle dataset).
-  SpaceNet/OpenSatMap adapters are untested against real data — no download available locally.
+## Datasets — the active training set is DeepGlobe + Massachusetts
+
+**Decision (2026-08-05):** train on the two real-imagery datasets that are one-click
+on Kaggle. Both give real pixels, at two different resolutions, from two different
+sensors and regions. See `configs/datasets.yaml` + docs/DATASETS.md.
+
+| Dataset | GSD | Kaggle slug | Status |
+|---|---|---|---|
+| **DeepGlobe** | 0.5 m | `balraj98/deepglobe-road-extraction-dataset` | ✅ training |
+| **Massachusetts Roads** | 1.0 m | `balraj98/massachusetts-roads-dataset` | ✅ training |
+
+Why not the others: **OSM** (730 Bengaluru tiles) is masks-only, so those tiles fall
+back to `synth_image.py` — the model would read the answer off its own input, making
+any metric meaningless. **SpaceNet** is AWS requester-pays with only partial Kaggle
+mirrors and its adapter has never run against the real archive. **OpenSatMap** needs
+a manual download. All three adapters remain built and available via `--append`.
+
+The differing GSD is deliberate — it is the multi-resolution pretraining §3.3 asks
+for. `terrain` carries the domain, so the stratified split keeps each dataset in
+train *and* val *and* test, and `evaluate.py` reports per-domain generalisation.
+
+**Verified locally (2026-08-05)** against fixtures mirroring both Kaggle layouts:
+ingest → `--append` → stratified split → 1-epoch train → evaluate `--apls --tta` →
+ablations all run clean. One epoch on real image/mask pairs reached **IoU 0.82**,
+versus 0.099 for the old synth-image dry runs — the pipeline works; it just needs
+real data and a GPU.
