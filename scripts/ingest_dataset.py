@@ -69,8 +69,13 @@ def main() -> None:
         gsd_m=args.gsd, limit=args.limit,
     )
     if df.empty:
-        log.warning("no tiles ingested — check paths / dataset layout.")
-        return
+        # Exit non-zero: a silent return here hands the caller a missing manifest
+        # and the real failure only surfaces cells later, far from its cause.
+        log.error("no tiles ingested from source=%s root=%s images=%s masks=%s",
+                  args.source, args.root, args.images, args.masks)
+        log.error("check the path exists and matches the expected layout "
+                  "(see docs/DATASETS.md); nothing was written.")
+        raise SystemExit(1)
 
     manifest_path = PROCESSED / "manifest.csv"
     if args.append and manifest_path.exists():
