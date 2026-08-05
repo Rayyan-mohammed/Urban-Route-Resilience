@@ -41,6 +41,7 @@ log = get_logger(__name__)
 DEFAULT_GSD_M = {
     "deepglobe": 0.5,      # DigitalGlobe, ~0.5 m
     "spacenet": 0.3,       # WorldView-3 PS-RGB, ~0.3 m
+    "massachusetts": 1.0,  # Massachusetts Roads aerial, ~1 m
     "opensatmap": 0.5,     # mixed high-res
     "folder": 0.5,
 }
@@ -258,6 +259,36 @@ def iter_spacenet(root: Path, *, road_buffer_m: float = 2.0) -> Iterator[tuple[n
         yield img, mask, cid
 
 
+def iter_massachusetts(root: Path) -> Iterator[tuple[np.ndarray, np.ndarray, str]]:
+    """Massachusetts Roads: `<split>/` image dirs beside `<split>_labels/` mask dirs.
+
+    The Kaggle release (`balraj98/massachusetts-roads-dataset`) ships
+    `tiff/{train,val,test}` next to `tiff/{train,val,test}_labels`, 1500x1500 aerial
+    tiles at ~1 m GSD with white-on-black road labels. Rather than hardcoding those
+    three names we pair ANY `<x>/` with its `<x>_labels/` sibling, so a re-packaged
+    copy still ingests.
+
+    Note the 1 m GSD: stacking this with DeepGlobe's 0.5 m gives the
+    multi-resolution pretraining §3.3 asks for, and the `terrain` column keeps the
+    two domains balanced across the train/val/test split.
+    """
+    root = Path(root)
+    pairs: list[tuple[Path, Path]] = []
+    for d in sorted(p for p in root.rglob("*") if p.is_dir()):
+        if d.name.endswith("_labels"):
+            continue
+        labels = d.with_name(d.name + "_labels")
+        if labels.is_dir():
+            pairs.append((d, labels))
+
+    if not pairs:
+        log.warning("massachusetts: no '<x>/ + <x>_labels/' dir pairs under %s", root)
+        return
+    log.info("massachusetts: %d split(s): %s", len(pairs), [p[0].name for p in pairs])
+    for img_dir, mask_dir in pairs:
+        yield from iter_folder(img_dir, mask_dir)
+
+
 def _footprint_radius_m(bounds, crs) -> float:
     """Half-diagonal of a footprint in metres, for any CRS."""
     west, south, east, north = bounds
@@ -371,6 +402,8 @@ def ingest_source(
     """Dispatch to the right adapter and tile it into manifest rows."""
     if source == "deepglobe":
         pairs = iter_deepglobe(root)
+    elif source == "massachusetts":
+        pairs = iter_massachusetts(root)
     elif source == "spacenet":
         pairs = iter_spacenet(root, road_buffer_m=float(cfg.data.osm.road_buffer_m))
     elif source in ("opensatmap", "folder"):

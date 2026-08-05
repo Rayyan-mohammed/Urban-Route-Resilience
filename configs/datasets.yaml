@@ -4,8 +4,13 @@
 # sets `image_path`, so training uses real pixels instead of the synthetic stand-in.
 #
 # Kaggle note: attach the dataset from the right-hand "Add Data" panel; it mounts
-# read-only under /kaggle/input/<slug>/. DeepGlobe is the easy one (already a
-# Kaggle dataset). SpaceNet is on AWS (requester-pays); OpenSatMap on HuggingFace.
+# read-only under /kaggle/input/<slug>/. DeepGlobe and Massachusetts are one-click
+# Kaggle datasets. SpaceNet is on AWS (requester-pays); OpenSatMap on HuggingFace.
+#
+# ACTIVE TRAINING SET = deepglobe + massachusetts (both real imagery, both
+# one-click). Their differing GSD (0.5 m vs 1.0 m) is the multi-resolution
+# pretraining §3.3 calls for, and `terrain` carries the domain so the stratified
+# split keeps both in train AND val AND test.
 
 datasets:
   deepglobe:
@@ -14,6 +19,13 @@ datasets:
     layout: "<root>/*_sat.jpg + <root>/*_mask.png"
     kaggle: balraj98/deepglobe-road-extraction-dataset
     example_root: /kaggle/input/deepglobe-road-extraction-dataset/train
+
+  massachusetts:
+    role: second real domain          # different sensor + region -> generalisation
+    gsd_m: 1.0
+    layout: "<root>/<split>/*.tiff + <root>/<split>_labels/*.tif"
+    kaggle: balraj98/massachusetts-roads-dataset
+    example_root: /kaggle/input/massachusetts-roads-dataset/tiff
 
   spacenet:
     role: pretrain + topology eval    # has the official APLS graph GT (§3.2)

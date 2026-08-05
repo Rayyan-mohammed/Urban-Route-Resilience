@@ -155,3 +155,88 @@ def test_synthetic_and_georeferenced_pairs_can_mix(tmp_path):
     )
     assert df["tile_id"].str.contains("plain").any()
     assert df["tile_id"].str.contains("geo").any()
+
+
+# ----------------------- Massachusetts Roads (Kaggle) -----------------------
+def _massachusetts_tree(root, splits=("train", "val"), n=2):
+    """Mirror the Kaggle layout: tiff/<split>/*.tiff + tiff/<split>_labels/*.tif."""
+    tiff = root / "tiff"
+    for sp in splits:
+        img_dir, lab_dir = tiff / sp, tiff / f"{sp}_labels"
+        img_dir.mkdir(parents=True)
+        lab_dir.mkdir(parents=True)
+        for i in range(n):
+            img, mask = _road_image_mask(128, 128)
+            # Images ship as .tiff, labels as .tif — stems still match.
+            Image.fromarray(img).save(img_dir / f"{sp}{i}_15.tiff")
+            Image.fromarray(mask).save(lab_dir / f"{sp}{i}_15.tif")
+    return tiff
+
+
+def test_massachusetts_pairs_every_split(tmp_path):
+    root = _massachusetts_tree(tmp_path, splits=("train", "val", "test"), n=2)
+    got = list(ingest.iter_massachusetts(root))
+    assert len(got) == 6                       # 3 splits x 2 images
+    img, mask, base = got[0]
+    assert img.shape == (128, 128, 3) and mask.shape == (128, 128)
+    assert "_15" in base
+
+
+def test_massachusetts_ignores_label_dirs_as_images(tmp_path):
+    """`train_labels` must never be treated as its own image dir."""
+    root = _massachusetts_tree(tmp_path, splits=("train",), n=3)
+    assert len(list(ingest.iter_massachusetts(root))) == 3   # not 6
+
+
+def test_massachusetts_handles_repackaged_layout(tmp_path):
+    """Any `<x>/ + <x>_labels/` pair works, not just the three Kaggle names."""
+    root = tmp_path / "custom"
+    (root / "images_a").mkdir(parents=True)
+    (root / "images_a_labels").mkdir(parents=True)
+    img, mask = _road_image_mask(128, 128)
+    Image.fromarray(img).save(root / "images_a" / "x1.tiff")
+    Image.fromarray(mask).save(root / "images_a_labels" / "x1.tif")
+    assert len(list(ingest.iter_massachusetts(root))) == 1
+
+
+def test_massachusetts_warns_and_yields_nothing_on_bad_root(tmp_path):
+    (tmp_path / "nothing").mkdir()
+    assert list(ingest.iter_massachusetts(tmp_path)) == []
+
+
+def test_massachusetts_ingests_at_one_metre_gsd(tmp_path):
+    root = _massachusetts_tree(tmp_path, splits=("train",), n=1)
+    cfg = _cfg(tile=64)
+    df = ingest.ingest_source(
+        "massachusetts", cfg, terrain="massachusetts", root=root, out_dir=tmp_path / "out",
+    )
+    assert not df.empty
+    assert (df["image_path"] != "").all()
+    assert df["resolution_m"].iloc[0] == pytest.approx(1.0)   # aerial ~1 m, not 0.5
+    assert (df["terrain"] == "massachusetts").all()
+
+
+def test_deepglobe_and_massachusetts_stack_in_one_manifest(tmp_path):
+    """The two-dataset plan: both domains land in one manifest with real imagery."""
+    import pandas as pd
+
+    cfg = _cfg(tile=64)
+    # DeepGlobe-style pair
+    dg = tmp_path / "dg"
+    dg.mkdir()
+    img, mask = _road_image_mask(128, 128)
+    Image.fromarray(img).save(dg / "1_sat.jpg")
+    Image.fromarray(mask).save(dg / "1_mask.png")
+
+    ma_root = _massachusetts_tree(tmp_path / "ma", splits=("train",), n=1)
+    a = ingest.ingest_source("deepglobe", cfg, terrain="deepglobe",
+                             root=dg, out_dir=tmp_path / "out")
+    b = ingest.ingest_source("massachusetts", cfg, terrain="massachusetts",
+                             root=ma_root, out_dir=tmp_path / "out")
+
+    both = pd.concat([a, b], ignore_index=True)
+    assert set(both["terrain"]) == {"deepglobe", "massachusetts"}
+    assert (both["image_path"] != "").all()          # real pixels on both sides
+    assert both["tile_id"].is_unique
+    # Multi-resolution training signal: 0.5 m and 1.0 m tiles in one set.
+    assert set(both["resolution_m"].round(2)) == {0.5, 1.0}

@@ -10,6 +10,10 @@ the synthetic placeholder. Supports the roadmap's datasets:
     # SpaceNet Roads (georeferenced GeoTIFF + GeoJSON labels):
     python scripts/ingest_dataset.py --source spacenet --root /path/to/spacenet --terrain spacenet
 
+    # Massachusetts Roads (tiff/{train,val,test} + tiff/{train,val,test}_labels):
+    python scripts/ingest_dataset.py --source massachusetts \
+        --root /kaggle/input/massachusetts-roads-dataset/tiff --terrain massachusetts --append
+
     # OpenSatMap / any image-dir + mask-dir:
     python scripts/ingest_dataset.py --source opensatmap \
         --images /path/imgs --masks /path/masks --terrain opensatmap
@@ -42,10 +46,10 @@ log = get_logger("ingest_dataset")
 def main() -> None:
     ap = argparse.ArgumentParser(description="Ingest a real road dataset into the manifest.")
     ap.add_argument("--source", required=True,
-                    choices=["deepglobe", "spacenet", "opensatmap", "folder",
-                             "geotiff-osm", "cartosat"])
+                    choices=["deepglobe", "massachusetts", "spacenet", "opensatmap",
+                             "folder", "geotiff-osm", "cartosat"])
     ap.add_argument("--root", default=None,
-                    help="dataset root (deepglobe/spacenet/geotiff-osm)")
+                    help="dataset root (deepglobe/massachusetts/spacenet/geotiff-osm)")
     ap.add_argument("--images", default=None, help="image dir (opensatmap/folder)")
     ap.add_argument("--masks", default=None, help="mask dir (opensatmap/folder)")
     ap.add_argument("--terrain", default=None, help="stratum label (default: source name)")
