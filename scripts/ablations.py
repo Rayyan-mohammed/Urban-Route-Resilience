@@ -257,7 +257,8 @@ def render_models(r: dict) -> str:
         deltas = [f"{c}: {b[c] - a[c]:+.3f}" for c in _MODEL_COLS
                   if a.get(c) is not None and b.get(c) is not None]
         out += "\n\nDelta (last vs first): " + ", ".join(deltas) + "\n"
-    out += ("\nWatch IoU/Dice stay comparable while **clDice, connectivity ratio and "
+    # Blank line required, or markdown folds this into the table above.
+    out += ("\n\nWatch IoU/Dice stay comparable while **clDice, connectivity ratio and "
             "APLS** move in our favour — that is the topology claim, measured.\n")
     return out
 
